@@ -2,25 +2,39 @@
 
 ## Phase 1: Core Foundation
 
-### Step 1: Data Structures
-- [ ] Define `Player` struct with fields:
+### Step 1: Data Structures ✅ COMPLETE
+- [x] Define `Player` struct with fields:
   - **Required from CSV**: name, team, opponent, position, salary, projection, value, ownership, slate_id
   - **Optional/Derived**: injury_status, is_on_bye, game_time
-- [ ] Define `Lineup` struct to hold 9 players with metadata and total salary
-- [ ] Add Position enum (QB, RB, WR, TE, DST, FLEX) 
-- [ ] Add InjuryStatus enum (OUT, DOUBTFUL, QUESTIONABLE, ACTIVE) - optional field
-- [ ] Add basic utility functions for players and lineups
+- [x] Define `Lineup` struct to hold 9 players with metadata and total salary
+- [x] Add Position enum (QB, RB, WR, TE, DST, FLEX) 
+- [x] Add InjuryStatus enum (OUT, DOUBTFUL, QUESTIONABLE, ACTIVE) - optional field
+- [x] Add basic utility functions for players and lineups
 
-### Step 2: CSV Input Parser
+### Step 1.5: Data Structure Quality Improvements
+- [ ] **CRITICAL**: Fix memory management bug in `DKClassicPositions.getPlayers()` - clarify caller responsibility
+- [ ] Implement `PlayerBuilder` pattern for flexible Player creation:
+  - Replace fixed `init()` parameter list with builder pattern
+  - Support easy addition of new CSV fields without breaking existing code
+  - Validate required fields at build time
+- [ ] Add `PlayerConfig` struct for configurable CSV parsing:
+  - Define which columns are required vs optional
+  - Support different data source formats
+
+### Step 2: Enhanced CSV Input Parser
 - [ ] Create CSV parser module to read projection data
-- [ ] Parse CSV headers and validate expected columns
-- [ ] Parse CSV rows into Player structs with data conversion:
+- [ ] Parse CSV headers and validate expected columns using PlayerConfig
+- [ ] Parse CSV rows into Player structs using PlayerBuilder pattern:
   - Remove $ from salary and convert to integer
   - Remove % from ownership and convert to float (0.0-1.0)
   - Handle malformed rows (e.g., line 77 with "#N/A" values)
+- [ ] **Enhanced Error Handling**: 
+  - Create structured error types (`ParsingError`, `DataValidationError`)
+  - Include context (line numbers, field names, values)
+  - Skip malformed rows with detailed warnings
 - [ ] Add utility functions for parsing salary ($7900 -> 7900) and ownership (46% -> 0.46)
-- [ ] Handle malformed data gracefully with detailed error messages
-- [ ] Add data validation and type conversion
+- [ ] **Structured Logging**: Add debug/info/warn logging for parsing operations
+- [ ] Add data validation and type conversion with clear error messages
 
 ### Step 3: Rule Engine Framework
 - [ ] Design `Rule` interface/trait for lineup validation
@@ -56,22 +70,33 @@
 - [ ] Add help text and basic error handling
 - [ ] Create working end-to-end pipeline
 
-### Step 8: Basic Testing & Integration
+### Step 8: Enhanced Testing & Integration
 - [ ] Unit tests for data structures and parsing
 - [ ] Rule engine tests with sample data
+- [ ] **Property-based testing**: Generate random valid lineups and verify constraints
 - [ ] Integration test: CSV input → lineup generation → CSV output
 - [ ] Test with actual sample DraftKings data
+- [ ] **API Documentation**: Document all public interfaces with examples as we build
+- [ ] Add benchmark suite for parsing and lineup generation performance
 
 ## Phase 3: Advanced Features & Optimization
 
-### Step 9: Advanced Rules
-- [ ] `OwnershipConstraintRule` - limit high ownership players
-- [ ] `StackingRule` - enforce QB+WR from same team stacks  
-- [ ] `ExposureRule` - limit player exposure across lineups
-- [ ] `BudgetOptimizationRule` - ensure efficient salary usage
-- [ ] `ByeWeekRule` - exclude players on bye weeks
-- [ ] `GameTimeRule` - validate players are in current week's games
-- [ ] `LateSwapRule` - support player substitution logic
+### Step 9: Advanced Rules & Architecture Improvements
+- [ ] **Position Management Refactoring**:
+  - Create `PositionSlot` enum (QB_SLOT, RB1_SLOT, RB2_SLOT, etc.)
+  - Replace hard-coded position logic with generic `addPlayerToSlot()` methods
+  - Use position mapping configuration instead of switch statements
+- [ ] **Configurable Contest Support**:
+  - Implement `LineupConstraints` struct for different contest types
+  - Support Classic, Showdown, and custom lineup structures
+- [ ] **Advanced Rules Implementation**:
+  - `OwnershipConstraintRule` - limit high ownership players
+  - `StackingRule` - enforce QB+WR from same team stacks  
+  - `ExposureRule` - limit player exposure across lineups
+  - `BudgetOptimizationRule` - ensure efficient salary usage
+  - `ByeWeekRule` - exclude players on bye weeks
+  - `GameTimeRule` - validate players are in current week's games
+  - `LateSwapRule` - support player substitution logic
 
 ### Step 10: Enhanced CLI & Features
 - [ ] Advanced command line options and configuration files
@@ -128,10 +153,15 @@ This plan prioritizes incremental development and early validation:
 - [x] Development plan with rule engine (reordered for better flow)
 - [x] DraftKings constraints documented
 - [x] CSV data format analyzed
-- [ ] **NEXT: Start with Step 1 - Data Structures**
+- [x] **Step 1 - Data Structures** ✅ COMPLETE
+- [ ] **NEXT: Step 1.5 - Critical Quality Improvements (fix memory bug + add flexibility)**
+- [ ] **THEN: Step 2 - Enhanced CSV Input Parser**
 
 ## Key Improvements in This Plan
+- **Quality built-in from start** (Step 1.5) - fix critical bugs and add flexibility early
+- **Enhanced error handling integrated** (Step 2) - structured errors and logging from CSV parser onward
 - **CSV parser moved early** (Step 2) - need data to test everything else
-- **Basic testing integrated** (Step 8) - validate working system before advanced features  
+- **Testing and documentation integrated** (Step 8) - validate working system before advanced features  
+- **Architecture improvements timed right** (Step 9) - refactor position logic after working system proven
 - **Incremental approach** - each phase delivers working functionality
 - **Advanced features last** - focus on correctness before optimization
