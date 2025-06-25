@@ -85,6 +85,35 @@ All lineup generation must comply with DraftKings NFL Classic rules (see DK_NFL_
 - No external dependencies are currently used
 - Both library and executable have separate test suites that run in parallel
 
+## TODO.md Maintenance Requirements
+
+**CRITICAL**: After completing any development step or implementing any feature, you MUST:
+
+1. **Update TODO.md immediately** - Mark completed items with ✅ COMPLETE
+2. **Add implementation details** - Include specific details about what was implemented
+3. **Update Current Status section** - Reflect the new state of the project
+4. **Update next steps** - Clearly indicate what should be done next
+
+### TODO.md Update Checklist
+After completing any work:
+- [ ] Mark completed step/task with `✅ COMPLETE`
+- [ ] Add bullet points describing what was implemented
+- [ ] Update the "Current Status" section at the bottom
+- [ ] Verify the "NEXT:" step is correctly identified
+- [ ] Run `zig build test` to ensure implementation works
+- [ ] Commit changes (if requested by user)
+
+**Example of proper TODO.md update**:
+```markdown
+### Step X: Feature Name ✅ COMPLETE
+- [x] Task description
+  - Implementation detail 1
+  - Implementation detail 2
+  - Any important notes or decisions made
+```
+
+This ensures the project roadmap stays current and provides clear visibility into development progress.
+
 ## Code Quality Standards
 
 ### Memory Management Priority

@@ -17,10 +17,9 @@ pub const DKClassicPositions = struct {
 
     const Self = @This();
 
-    // Get all players as a slice for iteration
+    // Returns owned slice of players - caller must call allocator.free() on result
     pub fn getPlayers(self: Self, allocator: std.mem.Allocator) ![]?*const Player {
         var players = std.ArrayList(?*const Player).init(allocator);
-        defer players.deinit();
         
         try players.append(self.qb);
         try players.append(self.rb1);

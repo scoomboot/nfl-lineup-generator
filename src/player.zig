@@ -165,6 +165,356 @@ pub const Player = struct {
     }
 };
 
+// PlayerBuilder pattern for flexible Player creation
+pub const PlayerBuilder = struct {
+    // Required fields
+    name: ?[]const u8 = null,
+    team: ?[]const u8 = null,
+    opponent: ?[]const u8 = null,
+    position: ?Position = null,
+    salary: ?u32 = null,
+    projection: ?f32 = null,
+    value: ?f32 = null,
+    ownership: ?f32 = null,
+    slate_id: ?[]const u8 = null,
+    
+    // Optional fields
+    injury_status: ?InjuryStatus = null,
+    is_on_bye: bool = false,
+    game_time: ?[]const u8 = null,
+
+    const Self = @This();
+
+    pub fn init() Self {
+        return Self{};
+    }
+
+    // Required field setters - these must be called for a valid Player
+    pub fn setName(self: *Self, name: []const u8) *Self {
+        self.name = name;
+        return self;
+    }
+
+    pub fn setTeam(self: *Self, team: []const u8) *Self {
+        self.team = team;
+        return self;
+    }
+
+    pub fn setOpponent(self: *Self, opponent: []const u8) *Self {
+        self.opponent = opponent;
+        return self;
+    }
+
+    pub fn setPosition(self: *Self, position: Position) *Self {
+        self.position = position;
+        return self;
+    }
+
+    pub fn setSalary(self: *Self, salary: u32) *Self {
+        self.salary = salary;
+        return self;
+    }
+
+    pub fn setProjection(self: *Self, projection: f32) *Self {
+        self.projection = projection;
+        return self;
+    }
+
+    pub fn setValue(self: *Self, value: f32) *Self {
+        self.value = value;
+        return self;
+    }
+
+    pub fn setOwnership(self: *Self, ownership: f32) *Self {
+        self.ownership = ownership;
+        return self;
+    }
+
+    pub fn setSlateId(self: *Self, slate_id: []const u8) *Self {
+        self.slate_id = slate_id;
+        return self;
+    }
+
+    // Optional field setters
+    pub fn setInjuryStatus(self: *Self, status: InjuryStatus) *Self {
+        self.injury_status = status;
+        return self;
+    }
+
+    pub fn setByeWeek(self: *Self, is_on_bye: bool) *Self {
+        self.is_on_bye = is_on_bye;
+        return self;
+    }
+
+    pub fn setGameTime(self: *Self, game_time: []const u8) *Self {
+        self.game_time = game_time;
+        return self;
+    }
+
+    // Convenience methods for parsing from strings
+    pub fn setSalaryFromString(self: *Self, salary_str: []const u8) !*Self {
+        const salary = try PlayerUtils.parseSalary(salary_str);
+        return self.setSalary(salary);
+    }
+
+    pub fn setOwnershipFromString(self: *Self, ownership_str: []const u8) !*Self {
+        const ownership = try PlayerUtils.parseOwnership(ownership_str);
+        return self.setOwnership(ownership);
+    }
+
+    pub fn setProjectionFromString(self: *Self, projection_str: []const u8) !*Self {
+        const projection = try PlayerUtils.parseProjection(projection_str);
+        return self.setProjection(projection);
+    }
+
+    pub fn setValueFromString(self: *Self, value_str: []const u8) !*Self {
+        const value = try PlayerUtils.parseValue(value_str);
+        return self.setValue(value);
+    }
+
+    pub fn setPositionFromString(self: *Self, position_str: []const u8) !*Self {
+        const position = try Position.fromString(position_str);
+        return self.setPosition(position);
+    }
+
+    pub fn setInjuryStatusFromString(self: *Self, status_str: []const u8) !*Self {
+        const status = try InjuryStatus.fromString(status_str);
+        return self.setInjuryStatus(status);
+    }
+
+    // Build the Player - validates all required fields are present
+    pub fn build(self: Self) !Player {
+        // Validate required fields
+        const name = self.name orelse return error.MissingPlayerName;
+        const team = self.team orelse return error.MissingPlayerTeam;
+        const opponent = self.opponent orelse return error.MissingPlayerOpponent;
+        const position = self.position orelse return error.MissingPlayerPosition;
+        const salary = self.salary orelse return error.MissingPlayerSalary;
+        const projection = self.projection orelse return error.MissingPlayerProjection;
+        const value = self.value orelse return error.MissingPlayerValue;
+        const ownership = self.ownership orelse return error.MissingPlayerOwnership;
+        const slate_id = self.slate_id orelse return error.MissingPlayerSlateId;
+
+        return Player{
+            .name = name,
+            .team = team,
+            .opponent = opponent,
+            .position = position,
+            .salary = salary,
+            .projection = projection,
+            .value = value,
+            .ownership = ownership,
+            .slate_id = slate_id,
+            .injury_status = self.injury_status,
+            .is_on_bye = self.is_on_bye,
+            .game_time = self.game_time,
+        };
+    }
+};
+
+// PlayerConfig struct for configurable CSV parsing
+pub const PlayerConfig = struct {
+    // Define which columns are required vs optional
+    require_name: bool = true,
+    require_team: bool = true,
+    require_opponent: bool = true,
+    require_position: bool = true,
+    require_salary: bool = true,
+    require_projection: bool = true,
+    require_value: bool = true,
+    require_ownership: bool = true,
+    require_slate_id: bool = true,
+    
+    // Allow optional fields
+    allow_injury_status: bool = true,
+    allow_bye_week: bool = true,
+    allow_game_time: bool = true,
+    
+    // Column mapping for different data source formats
+    name_column: []const u8 = "Player",
+    team_column: []const u8 = "Team",
+    opponent_column: []const u8 = "Opponent", 
+    position_column: []const u8 = "DK Position",
+    salary_column: []const u8 = "DK Salary",
+    projection_column: []const u8 = "DK Projection",
+    value_column: []const u8 = "DK Value",
+    ownership_column: []const u8 = "DK Ownership",
+    slate_id_column: []const u8 = "DKSlateID",
+    
+    // Optional column mappings
+    injury_status_column: ?[]const u8 = null,
+    bye_week_column: ?[]const u8 = null,
+    game_time_column: ?[]const u8 = null,
+
+    const Self = @This();
+
+    // Default configuration for DraftKings CSV format
+    pub fn draftKingsDefault() Self {
+        return Self{};
+    }
+
+    // Flexible configuration for custom CSV formats
+    pub fn custom() Self {
+        return Self{
+            .require_name = true,
+            .require_team = true,
+            .require_position = true,
+            .require_salary = true,
+            .require_projection = false,  // May not always be available
+            .require_value = false,       // May not always be available  
+            .require_ownership = false,   // May not always be available
+            .require_opponent = false,    // May not always be available
+            .require_slate_id = false,    // May not always be available
+        };
+    }
+
+    // Validate that required columns are present in header
+    pub fn validateHeaders(self: Self, headers: []const []const u8) !void {
+        // Check for required columns
+        if (self.require_name and !self.hasColumn(headers, self.name_column)) {
+            return error.MissingNameColumn;
+        }
+        if (self.require_team and !self.hasColumn(headers, self.team_column)) {
+            return error.MissingTeamColumn;
+        }
+        if (self.require_opponent and !self.hasColumn(headers, self.opponent_column)) {
+            return error.MissingOpponentColumn;
+        }
+        if (self.require_position and !self.hasColumn(headers, self.position_column)) {
+            return error.MissingPositionColumn;
+        }
+        if (self.require_salary and !self.hasColumn(headers, self.salary_column)) {
+            return error.MissingSalaryColumn;
+        }
+        if (self.require_projection and !self.hasColumn(headers, self.projection_column)) {
+            return error.MissingProjectionColumn;
+        }
+        if (self.require_value and !self.hasColumn(headers, self.value_column)) {
+            return error.MissingValueColumn;
+        }
+        if (self.require_ownership and !self.hasColumn(headers, self.ownership_column)) {
+            return error.MissingOwnershipColumn;
+        }
+        if (self.require_slate_id and !self.hasColumn(headers, self.slate_id_column)) {
+            return error.MissingSlateIdColumn;
+        }
+    }
+
+    // Helper function to check if column exists in headers
+    fn hasColumn(self: Self, headers: []const []const u8, column_name: []const u8) bool {
+        _ = self;
+        for (headers) |header| {
+            if (std.mem.eql(u8, header, column_name)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Get column index for a given column name
+    pub fn getColumnIndex(self: Self, headers: []const []const u8, column_name: []const u8) ?usize {
+        _ = self;
+        for (headers, 0..) |header, i| {
+            if (std.mem.eql(u8, header, column_name)) {
+                return i;
+            }
+        }
+        return null;
+    }
+
+    // Create PlayerBuilder from CSV row data using this configuration
+    pub fn createPlayerBuilder(self: Self, headers: []const []const u8, row: []const []const u8) !PlayerBuilder {
+        var builder = PlayerBuilder.init();
+
+        // Set required fields
+        if (self.require_name) {
+            const idx = self.getColumnIndex(headers, self.name_column) orelse return error.MissingNameColumn;
+            if (idx >= row.len) return error.InvalidRowData;
+            _ = builder.setName(row[idx]);
+        }
+
+        if (self.require_team) {
+            const idx = self.getColumnIndex(headers, self.team_column) orelse return error.MissingTeamColumn;
+            if (idx >= row.len) return error.InvalidRowData;
+            _ = builder.setTeam(row[idx]);
+        }
+
+        if (self.require_opponent) {
+            const idx = self.getColumnIndex(headers, self.opponent_column) orelse return error.MissingOpponentColumn;
+            if (idx >= row.len) return error.InvalidRowData;
+            _ = builder.setOpponent(row[idx]);
+        }
+
+        if (self.require_position) {
+            const idx = self.getColumnIndex(headers, self.position_column) orelse return error.MissingPositionColumn;
+            if (idx >= row.len) return error.InvalidRowData;
+            _ = try builder.setPositionFromString(row[idx]);
+        }
+
+        if (self.require_salary) {
+            const idx = self.getColumnIndex(headers, self.salary_column) orelse return error.MissingSalaryColumn;
+            if (idx >= row.len) return error.InvalidRowData;
+            _ = try builder.setSalaryFromString(row[idx]);
+        }
+
+        if (self.require_projection) {
+            const idx = self.getColumnIndex(headers, self.projection_column) orelse return error.MissingProjectionColumn;
+            if (idx >= row.len) return error.InvalidRowData;
+            _ = try builder.setProjectionFromString(row[idx]);
+        }
+
+        if (self.require_value) {
+            const idx = self.getColumnIndex(headers, self.value_column) orelse return error.MissingValueColumn;
+            if (idx >= row.len) return error.InvalidRowData;
+            _ = try builder.setValueFromString(row[idx]);
+        }
+
+        if (self.require_ownership) {
+            const idx = self.getColumnIndex(headers, self.ownership_column) orelse return error.MissingOwnershipColumn;
+            if (idx >= row.len) return error.InvalidRowData;
+            _ = try builder.setOwnershipFromString(row[idx]);
+        }
+
+        if (self.require_slate_id) {
+            const idx = self.getColumnIndex(headers, self.slate_id_column) orelse return error.MissingSlateIdColumn;
+            if (idx >= row.len) return error.InvalidRowData;
+            _ = builder.setSlateId(row[idx]);
+        }
+
+        // Set optional fields if available
+        if (self.allow_injury_status and self.injury_status_column != null) {
+            if (self.getColumnIndex(headers, self.injury_status_column.?)) |idx| {
+                if (idx < row.len and row[idx].len > 0) {
+                    _ = builder.setInjuryStatusFromString(row[idx]) catch {
+                        // Ignore invalid injury status, leave as null
+                    };
+                }
+            }
+        }
+
+        if (self.allow_bye_week and self.bye_week_column != null) {
+            if (self.getColumnIndex(headers, self.bye_week_column.?)) |idx| {
+                if (idx < row.len) {
+                    const is_bye = std.mem.eql(u8, row[idx], "true") or 
+                                   std.mem.eql(u8, row[idx], "TRUE") or
+                                   std.mem.eql(u8, row[idx], "1");
+                    _ = builder.setByeWeek(is_bye);
+                }
+            }
+        }
+
+        if (self.allow_game_time and self.game_time_column != null) {
+            if (self.getColumnIndex(headers, self.game_time_column.?)) |idx| {
+                if (idx < row.len and row[idx].len > 0) {
+                    _ = builder.setGameTime(row[idx]);
+                }
+            }
+        }
+
+        return builder;
+    }
+};
+
 // Utility functions for player operations
 pub const PlayerUtils = struct {
     // Parse salary string from CSV format ($7900 -> 7900)
@@ -278,4 +628,97 @@ test "Player position compatibility" {
     
     // RB cannot fill QB position
     try testing.expect(!rb_player.canFillPosition(.QB));
+}
+
+test "PlayerBuilder pattern" {
+    const testing = std.testing;
+
+    // Test successful build with all required fields
+    var builder = PlayerBuilder.init();
+    const player = try builder
+        .setName("Test Player")
+        .setTeam("TEST")
+        .setOpponent("OPP")
+        .setPosition(.QB)
+        .setSalary(7000)
+        .setProjection(25.0)
+        .setValue(3.57)
+        .setOwnership(0.15)
+        .setSlateId("12345")
+        .setInjuryStatus(.ACTIVE)
+        .setByeWeek(false)
+        .build();
+
+    try testing.expectEqualStrings("Test Player", player.name);
+    try testing.expect(player.position == .QB);
+    try testing.expect(player.salary == 7000);
+    try testing.expect(player.injury_status.? == .ACTIVE);
+    try testing.expect(!player.is_on_bye);
+
+    // Test missing required field
+    var incomplete_builder = PlayerBuilder.init();
+    try testing.expectError(error.MissingPlayerName, incomplete_builder.build());
+
+    // Test string parsing methods
+    var string_builder = PlayerBuilder.init();
+    _ = try string_builder.setPositionFromString("RB");
+    _ = try string_builder.setSalaryFromString("$6500");
+    _ = try string_builder.setProjectionFromString("18.5");
+    _ = try string_builder.setValueFromString("2.85");
+    _ = try string_builder.setOwnershipFromString("25%");
+    const parsed_player = try string_builder
+        .setName("String Test")
+        .setTeam("TEST")
+        .setOpponent("OPP")
+        .setSlateId("67890")
+        .build();
+
+    try testing.expect(parsed_player.position == .RB);
+    try testing.expect(parsed_player.salary == 6500);
+    try testing.expect(parsed_player.ownership == 0.25);
+}
+
+test "PlayerConfig header validation" {
+    const testing = std.testing;
+
+    const config = PlayerConfig.draftKingsDefault();
+    
+    // Test valid headers
+    const valid_headers = [_][]const u8{
+        "Player", "Team", "Opponent", "DK Position", "DK Salary", 
+        "DK Projection", "DK Value", "DK Ownership", "DKSlateID"
+    };
+    try config.validateHeaders(&valid_headers);
+
+    // Test missing required column
+    const invalid_headers = [_][]const u8{ "Player", "Team" };
+    try testing.expectError(error.MissingOpponentColumn, config.validateHeaders(&invalid_headers));
+
+    // Test column index lookup
+    try testing.expect(config.getColumnIndex(&valid_headers, "Player").? == 0);
+    try testing.expect(config.getColumnIndex(&valid_headers, "Team").? == 1);
+    try testing.expect(config.getColumnIndex(&valid_headers, "NonExistent") == null);
+}
+
+test "PlayerConfig createPlayerBuilder" {
+    const testing = std.testing;
+
+    const config = PlayerConfig.draftKingsDefault();
+    const headers = [_][]const u8{
+        "Player", "Team", "Opponent", "DK Position", "DK Salary", 
+        "DK Projection", "DK Value", "DK Ownership", "DKSlateID"
+    };
+    const row = [_][]const u8{
+        "Test Player", "TEST", "OPP", "QB", "$7500", 
+        "24.5", "3.27", "18%", "12345"
+    };
+
+    var builder = try config.createPlayerBuilder(&headers, &row);
+    const player = try builder.build();
+
+    try testing.expectEqualStrings("Test Player", player.name);
+    try testing.expectEqualStrings("TEST", player.team);
+    try testing.expect(player.position == .QB);
+    try testing.expect(player.salary == 7500);
+    try testing.expect(player.ownership == 0.18);
 }

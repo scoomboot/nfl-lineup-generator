@@ -11,15 +11,21 @@
 - [x] Add InjuryStatus enum (OUT, DOUBTFUL, QUESTIONABLE, ACTIVE) - optional field
 - [x] Add basic utility functions for players and lineups
 
-### Step 1.5: Data Structure Quality Improvements
-- [ ] **CRITICAL**: Fix memory management bug in `DKClassicPositions.getPlayers()` - clarify caller responsibility
-- [ ] Implement `PlayerBuilder` pattern for flexible Player creation:
-  - Replace fixed `init()` parameter list with builder pattern
-  - Support easy addition of new CSV fields without breaking existing code
-  - Validate required fields at build time
-- [ ] Add `PlayerConfig` struct for configurable CSV parsing:
-  - Define which columns are required vs optional
-  - Support different data source formats
+### Step 1.5: Data Structure Quality Improvements ✅ COMPLETE
+- [x] **CRITICAL**: Fix memory management bug in `DKClassicPositions.getPlayers()` - clarify caller responsibility
+  - Fixed memory leak by removing incorrect `defer players.deinit()`
+  - Added clear documentation that caller must free returned slice
+- [x] Implement `PlayerBuilder` pattern for flexible Player creation:
+  - Added fluent builder interface with method chaining
+  - Support for both direct values and string parsing methods
+  - Validates all required fields at build time with clear error messages
+  - Easy addition of new CSV fields without breaking existing code
+- [x] Add `PlayerConfig` struct for configurable CSV parsing:
+  - Configurable required vs optional field definitions
+  - Column mapping support for different data source formats
+  - Header validation with structured error reporting
+  - Direct integration with PlayerBuilder pattern
+  - Support for DraftKings default and custom configurations
 
 ### Step 2: Enhanced CSV Input Parser
 - [ ] Create CSV parser module to read projection data
@@ -154,8 +160,11 @@ This plan prioritizes incremental development and early validation:
 - [x] DraftKings constraints documented
 - [x] CSV data format analyzed
 - [x] **Step 1 - Data Structures** ✅ COMPLETE
-- [ ] **NEXT: Step 1.5 - Critical Quality Improvements (fix memory bug + add flexibility)**
-- [ ] **THEN: Step 2 - Enhanced CSV Input Parser**
+- [x] **Step 1.5 - Critical Quality Improvements** ✅ COMPLETE
+  - Memory management bug fixed in DKClassicPositions.getPlayers()
+  - PlayerBuilder pattern implemented with validation and flexibility
+  - PlayerConfig struct added for configurable CSV parsing
+- [ ] **NEXT: Step 2 - Enhanced CSV Input Parser**
 
 ## Key Improvements in This Plan
 - **Quality built-in from start** (Step 1.5) - fix critical bugs and add flexibility early
