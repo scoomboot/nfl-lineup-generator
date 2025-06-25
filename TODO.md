@@ -61,6 +61,33 @@
   - Validation of salary, projection, ownership ranges
   - **Tested with actual data**: Successfully parsed 291/293 rows, correctly skipped malformed row
 
+### Step 2.5: Integration Testing & Validation ✅ COMPLETE
+- [x] **Core Pipeline Integration Tests**:
+  - Test complete CSV→Player pipeline with known good data
+  - Test malformed data handling with real edge cases
+  - Test memory management across full pipeline with allocator tracking
+- [x] **Data Validation Integration Tests**:
+  - Test edge cases found in actual projections.csv data
+  - Test different CSV format variations (quotes, separators, line endings)
+  - Validate parsing decisions match expected behavior
+- [x] **Error Handling Integration Tests**:
+  - Test structured error propagation with line numbers and context
+  - Test ParseResult warnings vs errors distinction
+  - Validate logging output at different levels (debug vs production)
+- [x] **Performance & Memory Integration Tests**:
+  - Test with large datasets (1000 players) for performance characteristics
+  - Memory usage profiling and peak allocation tracking with ArenaAllocator
+  - Verify cleanup on error paths and proper resource management
+- [x] **Configuration Integration Tests**:
+  - Test PlayerConfig flexibility with different column orders
+  - Test custom field mappings and missing optional fields
+  - Test PlayerBuilder integration through complete CSV parsing chain
+  - **Comprehensive Integration Test Suite**: Created `src/integration_tests.zig` with 15 integration tests
+  - **Real Data Validation**: Successfully tested with actual projections.csv (291/293 parsed, 99.3% success rate)
+  - **Performance Testing**: Validated parsing of 1000 players with performance metrics
+  - **Memory Management**: Confirmed proper cleanup with ArenaAllocator and error path handling
+  - **Edge Case Coverage**: Tested malformed data, missing columns, empty files, and invalid formats
+
 ### Step 3: Rule Engine Framework
 - [ ] Design `Rule` interface/trait for lineup validation
 - [ ] Create `RuleEngine` struct to manage multiple rules
@@ -188,6 +215,11 @@ This plan prioritizes incremental development and early validation:
   - Successfully tested with actual projections.csv data (291/293 rows parsed)
   - Integration with PlayerBuilder and PlayerConfig patterns
   - Proper handling of malformed data and edge cases
+- [x] **Step 2.5 - Integration Testing & Validation** ✅ COMPLETE
+  - Comprehensive integration test suite with 15 test cases covering all pipeline components
+  - Real data validation with actual projections.csv (99.3% success rate)
+  - Performance testing with 1000 players and memory management validation
+  - Edge case coverage including malformed data, errors, and configuration flexibility
 - [ ] **NEXT: Step 3 - Rule Engine Framework**
 
 ## Key Improvements in This Plan
