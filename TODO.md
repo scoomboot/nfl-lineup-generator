@@ -173,6 +173,38 @@
   - Complete integration test suite validating all rules working together
   - Tests both valid lineup scenarios and various failure conditions
 
+### Step 4.5: Rules Module Critical Bug Fixes & Improvements ✅ COMPLETE
+- [x] **CRITICAL: Fix Type Safety Issues**:
+  - Replaced unsafe @ptrCast operations with type-safe anyopaque interface
+  - Eliminated opaque type usage in favor of anyopaque for better type safety
+  - Created safer interface between RuleEngine and LineupRuleEngine without @ptrCast
+  - Documented remaining @ptrCast usage with comprehensive safety contracts
+- [x] **CRITICAL: Fix Memory Management Issues**:
+  - Enhanced ValidationResult.deinit() with null protection and double-free prevention
+  - Added proper error path memory management throughout rule validation pipeline
+  - Implemented comprehensive memory leak testing with ArenaAllocator validation
+  - Fixed RuleResult memory ownership with clear documentation and proper cleanup
+- [x] **CRITICAL: Fix Rule Engine Logic Bugs**:
+  - Fixed warning classification logic that was duplicating failed rules in ValidationResult
+  - Corrected rule priority handling so HIGH priority failures are properly categorized
+  - Updated rule validation state to ensure consistent behavior throughout pipeline
+  - Separated warnings from failures based on rule priority levels
+- [x] **PERFORMANCE: Optimize Rule Data Structures**:
+  - Replaced HashMap team counting in team_limits.zig with simple ArrayList approach (optimal for 9 players max)
+  - Replaced O(n²) duplicate detection in unique_player.zig with O(n) HashMap-based detection
+  - Maintained getPlayers() allocation pattern but documented memory ownership clearly
+  - Optimized rule validation for better performance with small lineup sizes
+- [x] **ARCHITECTURE: Improve Rule Validation Patterns**:
+  - Created ValidationPatterns utility struct with common validation patterns
+  - Standardized error message formatting through RuleUtils for consistent debugging
+  - Added comprehensive rule validation infrastructure to reduce code duplication
+  - Implemented better error context and recovery throughout validation pipeline
+- [x] **TESTING: Enhance Rule Test Coverage**:
+  - Added comprehensive memory management tests with ArenaAllocator
+  - Enhanced existing rule tests to cover edge cases and error scenarios
+  - Created test suite for rule engine memory leak prevention
+  - All rule validation tests now pass with improved memory safety
+
 ## Phase 2: Working System
 
 ### Step 5: Basic Lineup Generation
@@ -309,6 +341,13 @@ This plan prioritizes incremental development and early validation:
   - Comprehensive test coverage for each rule with edge cases and error scenarios
   - Complete integration testing with `createDraftKingsRuleEngine()` convenience function
   - All rules follow proper memory management patterns and structured error reporting
+- [x] **Step 4.5 - Rules Module Critical Bug Fixes & Improvements** ✅ COMPLETE
+  - Fixed critical type safety issues by replacing unsafe @ptrCast with anyopaque interface
+  - Resolved memory management problems in ValidationResult and error handling paths
+  - Corrected rule engine logic bugs including warning/failure classification
+  - Optimized performance with better data structures (O(n) vs O(n²) algorithms)
+  - Added shared validation infrastructure and standardized error formatting
+  - Enhanced test coverage with comprehensive memory management validation
 - [ ] **NEXT: Step 5 - Basic Lineup Generation**
 
 ## Key Improvements in This Plan

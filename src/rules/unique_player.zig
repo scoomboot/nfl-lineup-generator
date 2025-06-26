@@ -1,5 +1,6 @@
 const std = @import("std");
 const lineup_mod = @import("../lineup.zig");
+const player_mod = @import("../player.zig");
 const rules_mod = @import("rules.zig");
 
 const Lineup = lineup_mod.Lineup;
@@ -20,32 +21,40 @@ fn validateUniquePlayer(lineup: *const Lineup, allocator: std.mem.Allocator) !Ru
     const players = try lineup.positions.getPlayers(allocator);
     defer allocator.free(players);
     
-    // Check for duplicates by comparing player pointers
-    for (players, 0..) |player1, i| {
-        if (player1 == null) continue;
-        
-        for (players[i + 1..], i + 1..) |player2, j| {
-            if (player2 == null) continue;
-            
-            // Compare player pointers - same pointer = same player instance
-            if (player1.? == player2.?) {
+    // Optimized O(n) duplicate detection using HashSets
+    var seen_pointers = std.HashMap(*const player_mod.Player, usize, std.hash_map.DefaultContext(*const player_mod.Player), std.hash_map.default_max_load_percentage).init(allocator);
+    defer seen_pointers.deinit();
+    
+    var seen_names = std.HashMap([]const u8, usize, std.hash_map.StringContext, std.hash_map.default_max_load_percentage).init(allocator);
+    defer seen_names.deinit();
+    
+    for (players, 0..) |maybe_player, i| {
+        if (maybe_player) |player| {
+            // Check for duplicate player pointer
+            const pointer_result = try seen_pointers.getOrPut(player);
+            if (pointer_result.found_existing) {
+                const first_position = pointer_result.value_ptr.*;
                 return try RuleUtils.createErrorResult(
                     "UniquePlayerRule",
                     "Duplicate player found: {s} appears in positions {d} and {d}",
-                    .{ player1.?.name, i, j },
+                    .{ player.name, first_position, i },
                     allocator
                 );
             }
+            pointer_result.value_ptr.* = i;
             
-            // Also check for same player name as additional safety
-            if (std.mem.eql(u8, player1.?.name, player2.?.name)) {
+            // Check for duplicate player name
+            const name_result = try seen_names.getOrPut(player.name);
+            if (name_result.found_existing) {
+                const first_position = name_result.value_ptr.*;
                 return try RuleUtils.createErrorResult(
                     "UniquePlayerRule",
                     "Duplicate player name found: {s} appears in positions {d} and {d}",
-                    .{ player1.?.name, i, j },
+                    .{ player.name, first_position, i },
                     allocator
                 );
             }
+            name_result.value_ptr.* = i;
         }
     }
     

@@ -132,8 +132,6 @@ test "PositionConstraintRule validation" {
     const testing = std.testing;
     const allocator = testing.allocator;
     const player_mod = @import("../player.zig");
-    const Player = player_mod.Player;
-    const Position = player_mod.Position;
     const PlayerBuilder = player_mod.PlayerBuilder;
     
     // Create sample players for testing

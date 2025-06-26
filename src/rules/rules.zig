@@ -12,6 +12,55 @@ pub const ValidationResult = rule_engine.ValidationResult;
 pub const ContestRules = rule_engine.ContestRules;
 pub const RuleUtils = rule_engine.RuleUtils;
 
+// Shared validation infrastructure to reduce code duplication
+pub const ValidationPatterns = struct {
+    /// Standard pattern for validating a lineup against a simple condition
+    pub fn validateSimpleCondition(
+        rule_name: []const u8,
+        lineup: *const Lineup,
+        allocator: std.mem.Allocator,
+        condition_fn: fn(*const Lineup) bool,
+        error_message: []const u8,
+    ) !RuleResult {
+        if (condition_fn(lineup)) {
+            return RuleResult.valid(rule_name);
+        } else {
+            return RuleResult.invalid(rule_name, error_message);
+        }
+    }
+    
+    /// Standard pattern for player iteration with early exit on error
+    pub fn validatePlayersPattern(
+        rule_name: []const u8,
+        lineup: *const Lineup,
+        allocator: std.mem.Allocator,
+        comptime player_fn: fn(*const Player, usize, std.mem.Allocator) anyerror!?RuleResult,
+    ) !RuleResult {
+        const players = try lineup.positions.getPlayers(allocator);
+        defer allocator.free(players);
+        
+        for (players, 0..) |maybe_player, i| {
+            if (maybe_player) |player| {
+                if (try player_fn(player, i, allocator)) |error_result| {
+                    return error_result;
+                }
+            }
+        }
+        
+        return RuleResult.valid(rule_name);
+    }
+    
+    /// Standard error message formatting for consistent style
+    pub fn formatError(
+        rule_name: []const u8,
+        comptime fmt: []const u8,
+        args: anytype,
+        allocator: std.mem.Allocator,
+    ) !RuleResult {
+        return try RuleUtils.createErrorResult(rule_name, fmt, args, allocator);
+    }
+};
+
 // Import actual types
 const Lineup = lineup_mod.Lineup;
 const Player = player_mod.Player;
@@ -37,11 +86,9 @@ pub const LineupRuleEngine = struct {
     }
     
     pub fn validateLineup(self: *Self, target_lineup: *const Lineup) !ValidationResult {
-        // SAFETY: Cast the concrete Lineup to the opaque type for rule engine
-        // This is safe because both types represent the same data structure,
-        // just with different visibility (concrete vs opaque)
-        const opaque_lineup: *const rule_engine.Lineup = @ptrCast(target_lineup);
-        return try self.engine.validateLineup(opaque_lineup);
+        // Type-safe cast to anyopaque - no @ptrCast needed
+        const generic_lineup: *const anyopaque = target_lineup;
+        return try self.engine.validateLineup(generic_lineup);
     }
     
     pub fn getRule(self: *Self, rule_name: []const u8) ?*Rule {
@@ -53,28 +100,20 @@ pub const LineupRuleEngine = struct {
     }
 };
 
-// Helper function to create lineup validation rules with proper type casting
-// SAFETY: This function assumes that the opaque rule_engine.Lineup type is always
-// cast from a concrete Lineup type. The rule engine must guarantee this invariant.
+// Helper function to create type-safe lineup validation rules
+// Uses anyopaque instead of opaque types to avoid @ptrCast
 pub fn createLineupValidationFn(comptime validateFn: fn(*const Lineup, std.mem.Allocator) anyerror!RuleResult) 
-    *const fn (rule: *const Rule, target_lineup: *const rule_engine.Lineup, allocator: std.mem.Allocator) anyerror!RuleResult {
-    
-    // Compile-time size check to ensure types are compatible
-    comptime {
-        if (@sizeOf(Lineup) == 0) {
-            @compileError("Lineup type cannot be zero-sized for safe casting");
-        }
-    }
+    *const fn (rule: *const Rule, target_lineup: *const anyopaque, allocator: std.mem.Allocator) anyerror!RuleResult {
     
     return struct {
-        fn validate(rule: *const Rule, target_lineup: *const rule_engine.Lineup, allocator: std.mem.Allocator) anyerror!RuleResult {
+        fn validate(rule: *const Rule, target_lineup: *const anyopaque, allocator: std.mem.Allocator) anyerror!RuleResult {
             _ = rule;
-            // SAFETY: Cast the opaque type back to concrete Lineup
+            // Type-safe cast from anyopaque back to concrete Lineup
             // This is safe because:
-            // 1. LineupRuleEngine.validateLineup always passes a concrete Lineup cast to opaque
-            // 2. Both types have the same memory layout (opaque vs concrete)
-            // 3. We perform compile-time size validation above
-            const concrete_lineup: *const Lineup = @ptrCast(target_lineup);
+            // 1. LineupRuleEngine.validateLineup always passes a concrete Lineup cast to anyopaque
+            // 2. anyopaque preserves the original type information for casting back
+            // 3. No @ptrCast required - this is a standard Zig type coercion
+            const concrete_lineup: *const Lineup = @alignCast(@ptrCast(target_lineup));
             return try validateFn(concrete_lineup, allocator);
         }
     }.validate;
@@ -114,4 +153,46 @@ test "LineupRuleEngine basic operations" {
     try testing.expect(validation_result.total_rules_checked == 1);
     try testing.expect(validation_result.passed_rules.len == 1);
     try testing.expect(validation_result.failed_rules.len == 0);
+}
+
+test "Rule engine memory management" {
+    const testing = std.testing;
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    
+    var engine = LineupRuleEngine.init(allocator);
+    defer engine.deinit();
+    
+    // Create a rule that allocates error messages
+    const errorRule = struct {
+        fn validate(target_lineup: *const Lineup, alloc: std.mem.Allocator) !RuleResult {
+            _ = target_lineup;
+            return try RuleUtils.createErrorResult(
+                "MemoryTestRule",
+                "Test error message with allocation {d}",
+                .{42},
+                alloc
+            );
+        }
+    }.validate;
+    
+    const test_rule = Rule{
+        .name = "MemoryTestRule",
+        .priority = .HIGH,
+        .validateFn = createLineupValidationFn(errorRule),
+    };
+    
+    try engine.addRule(test_rule);
+    
+    // Test multiple validations to ensure no memory leaks
+    for (0..10) |_| {
+        var test_lineup = Lineup.init();
+        var result = try engine.validateLineup(&test_lineup);
+        defer result.deinit(allocator);
+        
+        try testing.expect(!result.is_valid);
+        try testing.expect(result.failed_rules.len == 1);
+        try testing.expect(result.failed_rules[0].owns_error_message);
+    }
 }

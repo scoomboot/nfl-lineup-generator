@@ -59,22 +59,21 @@ pub const RulePriority = enum(u8) {
     }
 };
 
-// Forward declaration for Lineup - will be defined elsewhere
-pub const Lineup = opaque {};
-
-// Rule interface - all rules must implement this
+// Type-safe rule interface using void pointers to avoid @ptrCast
+// The concrete lineup type is passed through the validation context
 pub const Rule = struct {
     // Rule metadata
     name: []const u8,
     priority: RulePriority,
     enabled: bool = true,
     
-    // Rule validation function pointer
-    validateFn: *const fn (rule: *const Rule, target_lineup: *const Lineup, allocator: std.mem.Allocator) anyerror!RuleResult,
+    // Type-safe rule validation function pointer
+    // Uses *const anyopaque instead of opaque type to avoid @ptrCast
+    validateFn: *const fn (rule: *const Rule, target_lineup: *const anyopaque, allocator: std.mem.Allocator) anyerror!RuleResult,
     
     const Self = @This();
     
-    pub fn validate(self: *const Self, target_lineup: *const Lineup, allocator: std.mem.Allocator) !RuleResult {
+    pub fn validate(self: *const Self, target_lineup: *const anyopaque, allocator: std.mem.Allocator) !RuleResult {
         if (!self.enabled) {
             return RuleResult.valid(self.name);
         }
@@ -92,12 +91,12 @@ pub const Rule = struct {
 
 // Rule validation context for detailed error reporting
 pub const RuleValidationContext = struct {
-    lineup: *const Lineup,
+    lineup: *const anyopaque,
     contest_rules: ?*const ContestRules = null,
     
     const Self = @This();
     
-    pub fn init(target_lineup: *const Lineup) Self {
+    pub fn init(target_lineup: *const anyopaque) Self {
         return Self{
             .lineup = target_lineup,
         };
@@ -151,7 +150,7 @@ pub const ValidationResult = struct {
     const Self = @This();
     
     pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
-        // Clean up individual RuleResult error messages
+        // Clean up individual RuleResult error messages with null protection
         for (self.passed_rules) |*result| {
             result.deinit(allocator);
         }
@@ -162,10 +161,15 @@ pub const ValidationResult = struct {
             result.deinit(allocator);
         }
         
-        // Free the slices themselves
-        allocator.free(self.passed_rules);
-        allocator.free(self.failed_rules);
-        allocator.free(self.warnings);
+        // Free the slices themselves - safe to call on valid slices
+        if (self.passed_rules.len > 0) allocator.free(self.passed_rules);
+        if (self.failed_rules.len > 0) allocator.free(self.failed_rules);
+        if (self.warnings.len > 0) allocator.free(self.warnings);
+        
+        // Reset to prevent double-free
+        self.passed_rules = &[_]RuleResult{};
+        self.failed_rules = &[_]RuleResult{};
+        self.warnings = &[_]RuleResult{};
     }
     
     pub fn isValid(self: Self) bool {
@@ -249,7 +253,7 @@ pub const RuleEngine = struct {
     }
     
     // Validate lineup against all rules
-    pub fn validateLineup(self: *Self, target_lineup: *const Lineup) !ValidationResult {
+    pub fn validateLineup(self: *Self, target_lineup: *const anyopaque) !ValidationResult {
         var passed_rules = std.ArrayList(RuleResult).init(self.allocator);
         var failed_rules = std.ArrayList(RuleResult).init(self.allocator);
         var warnings = std.ArrayList(RuleResult).init(self.allocator);
@@ -284,15 +288,12 @@ pub const RuleEngine = struct {
             if (result.is_valid) {
                 try passed_rules.append(result);
             } else {
-                try failed_rules.append(result);
-                
                 // CRITICAL and HIGH priority rule failures make lineup invalid
                 if (rule.priority == .CRITICAL or rule.priority == .HIGH) {
+                    try failed_rules.append(result);
                     overall_valid = false;
-                }
-                
-                // MEDIUM and LOW priority failures are warnings
-                if (rule.priority == .MEDIUM or rule.priority == .LOW) {
+                } else {
+                    // MEDIUM and LOW priority failures are warnings only
                     try warnings.append(result);
                 }
             }

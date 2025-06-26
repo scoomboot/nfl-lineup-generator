@@ -22,32 +22,40 @@ fn validateTeamLimits(lineup: *const Lineup, allocator: std.mem.Allocator) !Rule
     const players = try lineup.positions.getPlayers(allocator);
     defer allocator.free(players);
     
-    // Count players per team using HashMap
-    var team_counts = std.HashMap([]const u8, u8, std.hash_map.StringContext, std.hash_map.default_max_load_percentage).init(allocator);
+    // Optimized team counting using a simple approach
+    // Instead of HashMap, use direct counting since we only have 9 players max
+    var team_counts = std.ArrayList(TeamCount).init(allocator);
     defer team_counts.deinit();
     
     for (players) |maybe_player| {
         if (maybe_player) |player| {
-            const result = try team_counts.getOrPut(player.team);
-            if (result.found_existing) {
-                result.value_ptr.* += 1;
-            } else {
-                result.value_ptr.* = 1;
+            // Look for existing team in our list
+            var found = false;
+            for (team_counts.items) |*team_count| {
+                if (std.mem.eql(u8, team_count.team_name, player.team)) {
+                    team_count.count += 1;
+                    found = true;
+                    break;
+                }
+            }
+            
+            // If team not found, add new entry
+            if (!found) {
+                try team_counts.append(TeamCount{
+                    .team_name = player.team,
+                    .count = 1,
+                });
             }
         }
     }
     
     // Check for teams exceeding the limit
-    var team_iter = team_counts.iterator();
-    while (team_iter.next()) |entry| {
-        const team_name = entry.key_ptr.*;
-        const player_count = entry.value_ptr.*;
-        
-        if (player_count > MAX_PLAYERS_PER_TEAM) {
+    for (team_counts.items) |team_count| {
+        if (team_count.count > MAX_PLAYERS_PER_TEAM) {
             return try RuleUtils.createErrorResult(
                 "TeamLimitRule",
                 "Team {s} has {d} players, exceeding the maximum of {d}",
-                .{ team_name, player_count, MAX_PLAYERS_PER_TEAM },
+                .{ team_count.team_name, team_count.count, MAX_PLAYERS_PER_TEAM },
                 allocator
             );
         }
@@ -55,6 +63,12 @@ fn validateTeamLimits(lineup: *const Lineup, allocator: std.mem.Allocator) !Rule
     
     return RuleResult.valid("TeamLimitRule");
 }
+
+// Simple struct for team counting - more efficient than HashMap for small counts
+const TeamCount = struct {
+    team_name: []const u8,
+    count: u8,
+};
 
 test "TeamLimitRule validation" {
     const testing = std.testing;
@@ -135,7 +149,7 @@ test "TeamLimitRule validation" {
             var name_buf: [32]u8 = undefined;
             const name = try std.fmt.bufPrint(&name_buf, "Player {d}", .{i});
             
-            var temp_player = try PlayerBuilder.init(allocator)
+            const temp_player = try PlayerBuilder.init(allocator)
                 .setName(name)
                 .setTeam("NYG")  // All same team
                 .setOpponent("DAL")

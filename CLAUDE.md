@@ -140,3 +140,49 @@ pub fn getPlayers(self: Self, allocator: std.mem.Allocator) ![]?*const Player
 // Takes ownership of name string - will be freed when Player is destroyed  
 pub fn init(allocator: std.mem.Allocator, name: []const u8) !Player
 ```
+
+## Type Safety & Security Guidelines
+
+### @ptrCast Safety Requirements
+**CRITICAL**: The use of `@ptrCast` is extremely dangerous and should be avoided unless absolutely necessary:
+
+1. **Prohibition**: Never use `@ptrCast` unless there is no alternative approach
+2. **When Required**: If `@ptrCast` must be used, it requires:
+   - Comprehensive safety documentation explaining why it's safe
+   - Compile-time size validation where possible
+   - Runtime checks if compile-time validation is insufficient
+   - Clear ownership and lifetime contracts
+   - Detailed comments explaining invariants that guarantee safety
+
+3. **Safe Alternatives**: Always prefer these approaches over `@ptrCast`:
+   - Generic functions with proper type parameters
+   - Union types for multi-type handling
+   - Interface/trait patterns with vtables
+   - Wrapper types that maintain type safety
+
+**Example of acceptable @ptrCast usage** (only when no alternative exists):
+```zig
+// SAFETY: This cast is safe because:
+// 1. Both types have identical memory layout (verified at compile time)
+// 2. Caller guarantees concrete type was originally cast to opaque
+// 3. Lifetime: concrete type remains valid for duration of operation
+// 4. Size validation: @sizeOf(ConcreteType) == @sizeOf(OpaqueType)
+comptime {
+    if (@sizeOf(ConcreteType) != @sizeOf(OpaqueType)) {
+        @compileError("Type sizes must match for safe casting");
+    }
+}
+const concrete: *const ConcreteType = @ptrCast(opaque_ptr);
+```
+
+### Missing Method Implementation Policy
+**CRITICAL**: Before using any method in code, verify it exists in the codebase:
+
+1. **Verification Required**: Use search tools to confirm method exists before writing code that calls it
+2. **Implementation Priority**: If a method is missing and needed:
+   - Add TODO item for implementing the missing method
+   - Mark current work as blocked on missing dependency
+   - Implement missing method first, then continue with original task
+3. **No Forward References**: Never write code that assumes a method will be implemented later
+
+This prevents compilation errors and ensures code is always in a buildable state.
