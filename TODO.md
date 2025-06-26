@@ -208,10 +208,78 @@
 ## Phase 2: Working System
 
 ### Step 5: Basic Lineup Generation
-- [ ] Implement simple lineup generator using rule engine
-- [ ] Start with brute force approach for single valid lineup
-- [ ] Add lineup scoring/ranking based on projections
-- [ ] Test with actual CSV data to ensure it works
+
+#### Step 5.1: Core Generator Architecture & Interface Design ✅ COMPLETE
+- [x] Design `LineupGenerator` struct with configuration options
+  - Created LineupGenerator with allocator, player pool, rule engine, and configuration
+  - Clean separation of concerns with proper memory management documentation
+  - Generator doesn't own players or rule_engine - caller manages lifetimes
+- [x] Define generation parameters (player pool, constraints, generation options)
+  - Comprehensive GenerationConfig with strategy, limits, scoring, and debug options
+  - Support for different generation strategies (BRUTE_FORCE, RANDOM_SAMPLING, etc.)
+  - Configurable constraints including salary cap and lineup requirements
+- [x] Create clean interface for different generation strategies
+  - GenerationStrategy enum with extensible design for future algorithms
+  - ScoringStrategy enum supporting multiple ranking approaches
+  - Clean generate() method that dispatches to appropriate strategy implementation
+- [x] Implement basic lifecycle management (init/deinit with proper memory management)
+  - Proper init/deinit pattern with clear memory ownership documentation
+  - Generator manages GenerationResult ownership - caller must call deinit()
+  - Safe handling of external resources (players, rule_engine) without ownership
+- [x] Design `GenerationConfig` struct for configurable generation settings
+  - Builder pattern for easy configuration with method chaining
+  - Comprehensive settings: strategy, limits, scoring, optimization, debugging
+  - Convenience functions for common configurations (single lineup, debug mode)
+
+#### Step 5.2: Brute Force Generation Algorithm Implementation ✅ COMPLETE
+- [x] Implement basic brute force algorithm for single lineup generation
+  - Created comprehensive recursive backtracking algorithm with proper termination conditions
+  - Integrated timeout handling, attempt limits, and target lineup limits
+  - Efficient early termination when goals are met or constraints exceeded
+- [x] Use recursive backtracking approach for position slot assignment
+  - Implemented slot-based generation (QB, RB1, RB2, WR1, WR2, WR3, TE, FLEX, DST)
+  - Proper backtracking with lineup state restoration after failed attempts
+  - Candidate filtering by position for efficient slot filling
+- [x] Handle position slot assignment (QB, RB1, RB2, WR1, WR2, WR3, TE, FLEX, DST)
+  - Created PositionSlot enum for systematic slot management
+  - Implemented tryAddPlayerToSlot() with position validation and totals tracking
+  - Special handling for FLEX position with RB/WR/TE eligibility checking
+- [x] Integrate with existing rule engine for validation during generation
+  - Full integration with LineupRuleEngine for comprehensive validation
+  - Real-time validation of completed lineups using all DraftKings rules
+  - Proper error handling and statistics tracking for rule failures
+- [x] Add generation state tracking to avoid redundant work
+  - GenerationState struct with comprehensive attempt and success tracking
+  - Duplicate detection to prevent identical lineup generation
+  - Performance logging and progress reporting during generation
+
+#### Step 5.3: Lineup Scoring & Ranking System
+- [ ] Implement scoring logic based on player projections
+- [ ] Add lineup comparison and ranking functionality  
+- [ ] Create different scoring strategies (total points, value-based, etc.)
+- [ ] Support finding "best" lineup from generated candidates
+- [ ] Add tie-breaking logic for equal-scoring lineups
+
+#### Step 5.4: Generation Strategy & Optimization
+- [ ] Implement early pruning to avoid generating invalid lineups
+- [ ] Add generation limits and timeout handling
+- [ ] Optimize for finding valid lineups efficiently (fail fast on impossible constraints)
+- [ ] Add logging and progress tracking for generation process
+- [ ] Implement basic generation statistics (attempts, successes, failures)
+
+#### Step 5.5: Integration Testing & Validation
+- [ ] Test with actual CSV data from projections.csv
+- [ ] Validate generated lineups meet all DraftKings constraints
+- [ ] Test edge cases (insufficient players, no valid lineups possible)
+- [ ] Performance testing with realistic player pools (291 players)
+- [ ] Test memory management with ArenaAllocator throughout generation
+
+#### Step 5.6: Error Handling & Edge Cases
+- [ ] Handle cases where no valid lineup can be generated
+- [ ] Proper error reporting with context and suggestions
+- [ ] Handle memory allocation failures gracefully
+- [ ] Validate input parameters and player pool requirements
+- [ ] Add comprehensive generation failure diagnostics
 
 ### Step 6: DraftKings Output Format
 - [ ] Research DraftKings CSV upload format requirements
@@ -348,7 +416,21 @@ This plan prioritizes incremental development and early validation:
   - Optimized performance with better data structures (O(n) vs O(n²) algorithms)
   - Added shared validation infrastructure and standardized error formatting
   - Enhanced test coverage with comprehensive memory management validation
-- [ ] **NEXT: Step 5 - Basic Lineup Generation**
+- [x] **Step 5 - Basic Lineup Generation Planning** ✅ COMPLETE
+  - Broken down into 6 detailed substeps (5.1-5.6) covering architecture, algorithm, scoring, optimization, testing, and error handling
+  - Each substep has specific, actionable tasks for incremental implementation
+  - Maintains focus on proper memory management and integration with existing rule engine
+- [x] **Step 5.1 - Core Generator Architecture & Interface Design** ✅ COMPLETE
+  - Created comprehensive LineupGenerator architecture with proper memory management
+  - Implemented GenerationConfig builder pattern with flexible configuration options
+  - Added generation strategies, scoring strategies, and statistics tracking
+  - Full test coverage with player pool validation and configuration testing
+- [x] **Step 5.2 - Brute Force Generation Algorithm Implementation** ✅ COMPLETE
+  - Implemented comprehensive recursive backtracking algorithm with LineupRuleEngine integration
+  - Created systematic position slot assignment with proper FLEX handling
+  - Added generation state tracking, duplicate detection, and performance monitoring
+  - Full test coverage with position validation and termination condition testing
+- [ ] **NEXT: Step 5.3 - Lineup Scoring & Ranking System**
 
 ## Key Improvements in This Plan
 - **Quality built-in from start** (Step 1.5) - fix critical bugs and add flexibility early

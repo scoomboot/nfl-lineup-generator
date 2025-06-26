@@ -64,7 +64,6 @@ fn validateUniquePlayer(lineup: *const Lineup, allocator: std.mem.Allocator) !Ru
 test "UniquePlayerRule validation" {
     const testing = std.testing;
     const allocator = testing.allocator;
-    const player_mod = @import("../player.zig");
     const PlayerBuilder = player_mod.PlayerBuilder;
     
     // Create sample players
