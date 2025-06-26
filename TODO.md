@@ -141,13 +141,37 @@
   - Improved validation pipeline robustness with proper cleanup on all error paths
   - Ensured warning logic properly separates warnings from critical failures
 
-### Step 4: Core Rule Implementations
-- [ ] `SalaryCapRule` - enforce $50,000 salary limit (must use entire cap)
-- [ ] `PositionConstraintRule` - validate position requirements (1 QB, 2 RB, 3 WR, 1 TE, 1 FLEX, 1 DST)
-- [ ] `FlexPositionRule` - ensure FLEX can be RB/WR/TE only
-- [ ] `UniquePlayerRule` - prevent duplicate players in lineup
-- [ ] `TeamLimitRule` - maximum 8 players from any single NFL team
-- [ ] `PlayerAvailabilityRule` - exclude OUT players, validate active status
+### Step 4: Core Rule Implementations ✅ COMPLETE
+- [x] `SalaryCapRule` - enforce $50,000 salary limit (must use entire cap)
+  - Implemented CRITICAL priority rule that validates exact $50,000 salary requirement
+  - Clear error messages showing current vs required salary amounts
+  - Comprehensive test coverage including under/over/exact scenarios
+- [x] `PositionConstraintRule` - validate position requirements (1 QB, 2 RB, 3 WR, 1 TE, 1 FLEX, 1 DST)
+  - Implemented CRITICAL priority rule that validates all 9 DraftKings Classic positions
+  - Individual validation for each position count with specific error messages
+  - Verifies total lineup has exactly 9 filled positions
+- [x] `FlexPositionRule` - ensure FLEX can be RB/WR/TE only
+  - Implemented CRITICAL priority rule that validates FLEX position eligibility
+  - Works in conjunction with PositionConstraintRule for complete validation
+  - Uses Player.position.isFlexEligible() method for type safety
+- [x] `UniquePlayerRule` - prevent duplicate players in lineup
+  - Implemented CRITICAL priority rule that prevents duplicate players
+  - Checks both player pointer equality and name equality for comprehensive detection
+  - Provides detailed error messages with position information
+- [x] `TeamLimitRule` - maximum 8 players from any single NFL team
+  - Implemented HIGH priority rule using HashMap for efficient team counting
+  - Validates DraftKings constraint of maximum 8 players per NFL team
+  - Comprehensive error reporting showing team name and actual vs limit counts
+- [x] `PlayerAvailabilityRule` - exclude OUT players, validate active status
+  - Implemented HIGH priority rule that validates player injury status and bye weeks
+  - Excludes players marked as OUT or on bye weeks from valid lineups
+  - Allows QUESTIONABLE, DOUBTFUL, and ACTIVE players (following DraftKings rules)
+  - Clear error messages identifying unavailable players and reasons
+- [x] **Core Rules Integration**: Created comprehensive `core_rules.zig` module
+  - Exports all 6 core rule factory functions for easy access
+  - Provides `createDraftKingsRuleEngine()` convenience function with all rules pre-loaded
+  - Complete integration test suite validating all rules working together
+  - Tests both valid lineup scenarios and various failure conditions
 
 ## Phase 2: Working System
 
@@ -278,7 +302,14 @@ This plan prioritizes incremental development and early validation:
   - Completed dependency system with cycle detection and validation
   - Enhanced type safety with comprehensive documentation and compile-time checks
   - Improved error handling robustness throughout validation pipeline
-- [ ] **NEXT: Step 4 - Core Rule Implementations**
+- [x] **Step 4 - Core Rule Implementations** ✅ COMPLETE
+  - Implemented all 6 essential DraftKings validation rules with proper priority levels
+  - SalaryCapRule, PositionConstraintRule, FlexPositionRule (CRITICAL priority)
+  - UniquePlayerRule (CRITICAL), TeamLimitRule, PlayerAvailabilityRule (HIGH priority)
+  - Comprehensive test coverage for each rule with edge cases and error scenarios
+  - Complete integration testing with `createDraftKingsRuleEngine()` convenience function
+  - All rules follow proper memory management patterns and structured error reporting
+- [ ] **NEXT: Step 5 - Basic Lineup Generation**
 
 ## Key Improvements in This Plan
 - **Quality built-in from start** (Step 1.5) - fix critical bugs and add flexibility early
