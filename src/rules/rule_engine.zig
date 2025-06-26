@@ -5,6 +5,7 @@ pub const RuleResult = struct {
     is_valid: bool,
     error_message: ?[]const u8 = null,
     rule_name: []const u8,
+    owns_error_message: bool = false, // Track if we need to free error_message
     
     const Self = @This();
     
@@ -21,6 +22,23 @@ pub const RuleResult = struct {
             .error_message = error_message,
             .rule_name = rule_name,
         };
+    }
+    
+    pub fn invalidOwned(rule_name: []const u8, error_message: []const u8) Self {
+        return Self{
+            .is_valid = false,
+            .error_message = error_message,
+            .rule_name = rule_name,
+            .owns_error_message = true,
+        };
+    }
+    
+    pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+        if (self.owns_error_message and self.error_message != null) {
+            allocator.free(self.error_message.?);
+            self.error_message = null;
+            self.owns_error_message = false;
+        }
     }
 };
 
@@ -133,6 +151,18 @@ pub const ValidationResult = struct {
     const Self = @This();
     
     pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+        // Clean up individual RuleResult error messages
+        for (self.passed_rules) |*result| {
+            result.deinit(allocator);
+        }
+        for (self.failed_rules) |*result| {
+            result.deinit(allocator);
+        }
+        for (self.warnings) |*result| {
+            result.deinit(allocator);
+        }
+        
+        // Free the slices themselves
         allocator.free(self.passed_rules);
         allocator.free(self.failed_rules);
         allocator.free(self.warnings);
@@ -154,6 +184,7 @@ pub const ValidationResult = struct {
 // Main rule engine
 pub const RuleEngine = struct {
     rules: std.ArrayList(Rule),
+    rule_map: std.HashMap([]const u8, usize, std.hash_map.StringContext, std.hash_map.default_max_load_percentage), // name -> index in rules
     dependencies: std.ArrayList(RuleDependency),
     allocator: std.mem.Allocator,
     
@@ -162,6 +193,7 @@ pub const RuleEngine = struct {
     pub fn init(allocator: std.mem.Allocator) Self {
         return Self{
             .rules = std.ArrayList(Rule).init(allocator),
+            .rule_map = std.HashMap([]const u8, usize, std.hash_map.StringContext, std.hash_map.default_max_load_percentage).init(allocator),
             .dependencies = std.ArrayList(RuleDependency).init(allocator),
             .allocator = allocator,
         };
@@ -169,12 +201,20 @@ pub const RuleEngine = struct {
     
     pub fn deinit(self: *Self) void {
         self.rules.deinit();
+        self.rule_map.deinit();
         self.dependencies.deinit();
     }
     
     // Add a rule to the engine
     pub fn addRule(self: *Self, rule: Rule) !void {
+        // Check if rule name already exists
+        if (self.rule_map.contains(rule.name)) {
+            return error.DuplicateRuleName;
+        }
+        
+        const index = self.rules.items.len;
         try self.rules.append(rule);
+        try self.rule_map.put(rule.name, index);
     }
     
     // Add a rule dependency
@@ -184,21 +224,26 @@ pub const RuleEngine = struct {
     
     // Remove a rule by name
     pub fn removeRule(self: *Self, rule_name: []const u8) bool {
-        for (self.rules.items, 0..) |rule, i| {
-            if (std.mem.eql(u8, rule.name, rule_name)) {
-                _ = self.rules.orderedRemove(i);
-                return true;
+        if (self.rule_map.get(rule_name)) |index| {
+            _ = self.rules.orderedRemove(index);
+            _ = self.rule_map.remove(rule_name);
+            
+            // Update indices in map for rules that were shifted
+            var iterator = self.rule_map.iterator();
+            while (iterator.next()) |entry| {
+                if (entry.value_ptr.* > index) {
+                    entry.value_ptr.* -= 1;
+                }
             }
+            return true;
         }
         return false;
     }
     
-    // Get rule by name
+    // Get rule by name - O(1) lookup
     pub fn getRule(self: *Self, rule_name: []const u8) ?*Rule {
-        for (self.rules.items) |*rule| {
-            if (std.mem.eql(u8, rule.name, rule_name)) {
-                return rule;
-            }
+        if (self.rule_map.get(rule_name)) |index| {
+            return &self.rules.items[index];
         }
         return null;
     }
@@ -219,12 +264,18 @@ pub const RuleEngine = struct {
         
         // Validate each rule in priority order
         for (sorted_rules) |*rule| {
+            // Check dependencies before validation
+            if (!self.checkDependencies(rule.name, passed_rules.items)) {
+                // Skip rule due to unsatisfied dependencies
+                const skip_result = RuleResult.valid(rule.name); // Consider dependency skip as valid
+                try passed_rules.append(skip_result);
+                continue;
+            }
+            
             const result = rule.validate(target_lineup, self.allocator) catch |err| {
-                // Handle rule validation errors
+                // Handle rule validation errors - create owned error message
                 const error_msg = try std.fmt.allocPrint(self.allocator, "Rule validation error: {}", .{err});
-                defer self.allocator.free(error_msg);
-                
-                const error_result = RuleResult.invalid(rule.name, error_msg);
+                const error_result = RuleResult.invalidOwned(rule.name, error_msg);
                 try failed_rules.append(error_result);
                 overall_valid = false;
                 continue;
@@ -257,25 +308,112 @@ pub const RuleEngine = struct {
     }
     
     // Check if dependencies are satisfied before validation
-    fn checkDependencies(self: *Self, rule_name: []const u8) bool {
-        // Implementation for dependency checking
-        // For now, return true (no dependencies)
-        _ = self;
-        _ = rule_name;
+    fn checkDependencies(self: *Self, rule_name: []const u8, passed_rules: []const RuleResult) bool {
+        for (self.dependencies.items) |dependency| {
+            if (std.mem.eql(u8, dependency.rule_name, rule_name)) {
+                switch (dependency.dependency_type) {
+                    .REQUIRES => {
+                        // Check if required rule has passed
+                        var found_passed = false;
+                        for (passed_rules) |result| {
+                            if (std.mem.eql(u8, result.rule_name, dependency.rule_name) and result.is_valid) {
+                                found_passed = true;
+                                break;
+                            }
+                        }
+                        if (!found_passed) return false;
+                    },
+                    .CONFLICTS => {
+                        // Check if conflicting rule has passed - if so, this rule should not run
+                        for (passed_rules) |result| {
+                            if (std.mem.eql(u8, result.rule_name, dependency.rule_name) and result.is_valid) {
+                                return false; // Conflict detected
+                            }
+                        }
+                    },
+                    .ENHANCES => {
+                        // ENHANCES rules can always run, they just work better when other rules pass
+                        // No blocking behavior needed
+                    },
+                }
+            }
+        }
         return true;
     }
     
-    // Get rules by priority level
-    pub fn getRulesByPriority(self: *Self, priority: RulePriority) []Rule {
-        var matching_rules = std.ArrayList(Rule).init(self.allocator);
+    // Detect dependency cycles during rule registration
+    fn hasDependencyCycle(self: *Self, new_dependency: RuleDependency) bool {
+        // Simple cycle detection: check if adding this dependency would create a cycle
+        var visited = std.HashMap([]const u8, void, std.hash_map.StringContext, std.hash_map.default_max_load_percentage).init(self.allocator);
+        defer visited.deinit();
         
-        for (self.rules.items) |rule| {
-            if (rule.priority == priority) {
-                matching_rules.append(rule) catch continue;
+        return self.visitDependency(new_dependency.rule_name, &visited, new_dependency);
+    }
+    
+    fn visitDependency(self: *Self, rule_name: []const u8, visited: *std.HashMap([]const u8, void, std.hash_map.StringContext, std.hash_map.default_max_load_percentage), target_dependency: RuleDependency) bool {
+        // If we've already visited this rule, we have a cycle
+        if (visited.contains(rule_name)) {
+            return true;
+        }
+        
+        visited.put(rule_name, {}) catch return false;
+        
+        // Check if this rule depends on the target dependency's rule_name
+        if (std.mem.eql(u8, rule_name, target_dependency.rule_name)) {
+            return true; // Cycle detected
+        }
+        
+        // Visit all rules that this rule depends on
+        for (self.dependencies.items) |dependency| {
+            if (std.mem.eql(u8, dependency.rule_name, rule_name) and dependency.dependency_type == .REQUIRES) {
+                if (self.visitDependency(dependency.rule_name, visited, target_dependency)) {
+                    return true;
+                }
             }
         }
         
-        return matching_rules.toOwnedSlice() catch &[_]Rule{};
+        _ = visited.remove(rule_name);
+        return false;
+    }
+    
+    // Enhanced addDependency with cycle detection
+    pub fn addDependencyWithValidation(self: *Self, dependency: RuleDependency) !void {
+        // Validate that both rules exist
+        if (self.getRule(dependency.rule_name) == null) {
+            return error.RuleNotFound;
+        }
+        
+        // Check for dependency cycles
+        if (self.hasDependencyCycle(dependency)) {
+            return error.DependencyCycle;
+        }
+        
+        try self.dependencies.append(dependency);
+    }
+    
+    /// Get rules by priority level - returns owned slice, caller must free with allocator.free()
+    pub fn getRulesByPriority(self: *Self, priority: RulePriority, allocator: std.mem.Allocator) ![]Rule {
+        var matching_rules = std.ArrayList(Rule).init(allocator);
+        errdefer matching_rules.deinit();
+        
+        for (self.rules.items) |rule| {
+            if (rule.priority == priority) {
+                try matching_rules.append(rule);
+            }
+        }
+        
+        return try matching_rules.toOwnedSlice();
+    }
+    
+    /// Helper function to get count of rules by priority without allocating
+    pub fn countRulesByPriority(self: *Self, priority: RulePriority) u32 {
+        var count: u32 = 0;
+        for (self.rules.items) |rule| {
+            if (rule.priority == priority) {
+                count += 1;
+            }
+        }
+        return count;
     }
     
     // Enable/disable rules by priority
@@ -329,13 +467,10 @@ fn rulePriorityLessThan(context: void, a: Rule, b: Rule) bool {
 
 // Utility functions for creating common rule validation results
 pub const RuleUtils = struct {
+    /// Creates an error result with allocated error message - caller must call result.deinit()
     pub fn createErrorResult(rule_name: []const u8, comptime fmt: []const u8, args: anytype, allocator: std.mem.Allocator) !RuleResult {
         const error_message = try std.fmt.allocPrint(allocator, fmt, args);
-        return RuleResult{
-            .is_valid = false,
-            .error_message = error_message,
-            .rule_name = rule_name,
-        };
+        return RuleResult.invalidOwned(rule_name, error_message);
     }
     
     pub fn createValidResult(rule_name: []const u8) RuleResult {

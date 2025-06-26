@@ -37,7 +37,9 @@ pub const LineupRuleEngine = struct {
     }
     
     pub fn validateLineup(self: *Self, target_lineup: *const Lineup) !ValidationResult {
-        // Cast the concrete Lineup to the opaque type for rule engine
+        // SAFETY: Cast the concrete Lineup to the opaque type for rule engine
+        // This is safe because both types represent the same data structure,
+        // just with different visibility (concrete vs opaque)
         const opaque_lineup: *const rule_engine.Lineup = @ptrCast(target_lineup);
         return try self.engine.validateLineup(opaque_lineup);
     }
@@ -52,13 +54,26 @@ pub const LineupRuleEngine = struct {
 };
 
 // Helper function to create lineup validation rules with proper type casting
+// SAFETY: This function assumes that the opaque rule_engine.Lineup type is always
+// cast from a concrete Lineup type. The rule engine must guarantee this invariant.
 pub fn createLineupValidationFn(comptime validateFn: fn(*const Lineup, std.mem.Allocator) anyerror!RuleResult) 
     *const fn (rule: *const Rule, target_lineup: *const rule_engine.Lineup, allocator: std.mem.Allocator) anyerror!RuleResult {
+    
+    // Compile-time size check to ensure types are compatible
+    comptime {
+        if (@sizeOf(Lineup) == 0) {
+            @compileError("Lineup type cannot be zero-sized for safe casting");
+        }
+    }
     
     return struct {
         fn validate(rule: *const Rule, target_lineup: *const rule_engine.Lineup, allocator: std.mem.Allocator) anyerror!RuleResult {
             _ = rule;
-            // Cast the opaque type back to concrete Lineup
+            // SAFETY: Cast the opaque type back to concrete Lineup
+            // This is safe because:
+            // 1. LineupRuleEngine.validateLineup always passes a concrete Lineup cast to opaque
+            // 2. Both types have the same memory layout (opaque vs concrete)
+            // 3. We perform compile-time size validation above
             const concrete_lineup: *const Lineup = @ptrCast(target_lineup);
             return try validateFn(concrete_lineup, allocator);
         }

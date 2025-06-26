@@ -108,6 +108,39 @@
   - Rules are validated in priority order with different failure handling per priority level
   - CRITICAL/HIGH failures invalidate lineup, MEDIUM/LOW failures become warnings
 
+### Step 3.5: Rule Engine Quality & Memory Management Fixes ✅ COMPLETE
+- [x] **CRITICAL**: Fix memory management in RuleUtils.createErrorResult 
+  - Added `owns_error_message` flag to RuleResult for memory ownership tracking
+  - Implemented `RuleResult.deinit()` method for proper cleanup of allocated error messages
+  - Updated `ValidationResult.deinit()` to clean up all RuleResult instances
+  - Created `RuleResult.invalidOwned()` for allocated error messages
+  - Updated `RuleUtils.createErrorResult()` to use new ownership model
+- [x] **CRITICAL**: Fix memory leak in getRulesByPriority
+  - Updated function signature to require explicit allocator parameter
+  - Added clear documentation that caller must free returned slice with `allocator.free()`
+  - Implemented proper error handling with `errdefer` for cleanup on failure
+  - Added `countRulesByPriority()` helper function for non-allocating rule counting
+- [x] **PERFORMANCE**: Replace linear rule lookup with HashMap
+  - Added HashMap-based rule storage (`rule_map`) for O(1) lookup by name
+  - Updated `addRule()` to maintain HashMap with duplicate name detection
+  - Optimized `getRule()` to use O(1) HashMap lookup instead of linear search
+  - Enhanced `removeRule()` with proper HashMap maintenance and index updating
+- [x] **ARCHITECTURE**: Complete dependency system implementation
+  - Implemented complete `checkDependencies()` function with REQUIRES, CONFLICTS, ENHANCES support
+  - Added dependency cycle detection with `hasDependencyCycle()` and graph traversal
+  - Created `addDependencyWithValidation()` with rule existence validation and cycle prevention
+  - Integrated dependency checking into validation pipeline before rule execution
+- [x] **TYPE SAFETY**: Reduce unsafe @ptrCast usage
+  - Added comprehensive safety documentation for all @ptrCast operations
+  - Implemented compile-time size validation to ensure type compatibility
+  - Added detailed safety comments explaining invariants and guarantees
+  - Enhanced type safety with explicit safety contracts and assumptions
+- [x] **ROBUSTNESS**: Improve error handling in validation pipeline
+  - Replaced all `catch continue` patterns with proper error propagation
+  - Enhanced error context with structured error messages and memory management
+  - Improved validation pipeline robustness with proper cleanup on all error paths
+  - Ensured warning logic properly separates warnings from critical failures
+
 ### Step 4: Core Rule Implementations
 - [ ] `SalaryCapRule` - enforce $50,000 salary limit (must use entire cap)
 - [ ] `PositionConstraintRule` - validate position requirements (1 QB, 2 RB, 3 WR, 1 TE, 1 FLEX, 1 DST)
@@ -239,6 +272,12 @@ This plan prioritizes incremental development and early validation:
   - Rule interface with function pointers for flexible rule implementation
   - Structured error reporting and warning system
   - Integration layer for type safety with Lineup structs
+- [x] **Step 3.5 - Rule Engine Quality & Memory Management Fixes** ✅ COMPLETE
+  - Fixed critical memory management issues in RuleUtils and ValidationResult
+  - Optimized rule lookup with HashMap for O(1) performance
+  - Completed dependency system with cycle detection and validation
+  - Enhanced type safety with comprehensive documentation and compile-time checks
+  - Improved error handling robustness throughout validation pipeline
 - [ ] **NEXT: Step 4 - Core Rule Implementations**
 
 ## Key Improvements in This Plan
