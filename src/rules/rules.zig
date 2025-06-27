@@ -18,7 +18,7 @@ pub const ValidationPatterns = struct {
     pub fn validateSimpleCondition(
         rule_name: []const u8,
         lineup: *const Lineup,
-        allocator: std.mem.Allocator,
+        _: std.mem.Allocator,
         condition_fn: fn(*const Lineup) bool,
         error_message: []const u8,
     ) !RuleResult {
