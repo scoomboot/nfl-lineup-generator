@@ -138,7 +138,7 @@ pub fn createLineupValidationFn(comptime validateFn: fn(*const Lineup, std.mem.A
                     @compileError("Lineup alignment incompatible with anyopaque - unsafe cast");
                 }
                 // Verify both are pointer types
-                if (@typeInfo(@TypeOf(target_lineup)) != .Pointer) {
+                if (@typeInfo(@TypeOf(target_lineup)) != .pointer) {
                     @compileError("target_lineup must be a pointer type");
                 }
             }

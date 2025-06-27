@@ -45,7 +45,7 @@ test "All core rules integration test" {
     const PlayerBuilder = player_mod.PlayerBuilder;
     
     // Create a fully valid DraftKings lineup
-    var qb = try PlayerBuilder.init(allocator)
+    var qb = try PlayerBuilder.init()
         .setName("Josh Allen")
         .setTeam("BUF")
         .setOpponent("MIA")
@@ -60,7 +60,7 @@ test "All core rules integration test" {
         .build();
     defer qb.deinit(allocator);
     
-    var rb1 = try PlayerBuilder.init(allocator)
+    var rb1 = try PlayerBuilder.init()
         .setName("Saquon Barkley")
         .setTeam("PHI")
         .setOpponent("WAS")
@@ -75,7 +75,7 @@ test "All core rules integration test" {
         .build();
     defer rb1.deinit(allocator);
     
-    var rb2 = try PlayerBuilder.init(allocator)
+    var rb2 = try PlayerBuilder.init()
         .setName("Josh Jacobs")
         .setTeam("GB")
         .setOpponent("MIN")
@@ -90,7 +90,7 @@ test "All core rules integration test" {
         .build();
     defer rb2.deinit(allocator);
     
-    var wr1 = try PlayerBuilder.init(allocator)
+    var wr1 = try PlayerBuilder.init()
         .setName("Tyreek Hill")
         .setTeam("MIA")
         .setOpponent("BUF")
@@ -105,7 +105,7 @@ test "All core rules integration test" {
         .build();
     defer wr1.deinit(allocator);
     
-    var wr2 = try PlayerBuilder.init(allocator)
+    var wr2 = try PlayerBuilder.init()
         .setName("A.J. Brown")
         .setTeam("PHI")
         .setOpponent("WAS")
@@ -120,7 +120,7 @@ test "All core rules integration test" {
         .build();
     defer wr2.deinit(allocator);
     
-    var wr3 = try PlayerBuilder.init(allocator)
+    var wr3 = try PlayerBuilder.init()
         .setName("Jaylen Waddle")
         .setTeam("MIA")
         .setOpponent("BUF")
@@ -135,7 +135,7 @@ test "All core rules integration test" {
         .build();
     defer wr3.deinit(allocator);
     
-    var te = try PlayerBuilder.init(allocator)
+    var te = try PlayerBuilder.init()
         .setName("Travis Kelce")
         .setTeam("KC")
         .setOpponent("DEN")
@@ -150,7 +150,7 @@ test "All core rules integration test" {
         .build();
     defer te.deinit(allocator);
     
-    var flex = try PlayerBuilder.init(allocator)
+    var flex = try PlayerBuilder.init()
         .setName("Amari Cooper")
         .setTeam("BUF")
         .setOpponent("MIA")
@@ -165,7 +165,7 @@ test "All core rules integration test" {
         .build();
     defer flex.deinit(allocator);
     
-    var dst = try PlayerBuilder.init(allocator)
+    var dst = try PlayerBuilder.init()
         .setName("Bills DST")
         .setTeam("BUF")
         .setOpponent("MIA")

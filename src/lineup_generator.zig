@@ -153,9 +153,9 @@ pub const ScoredLineup = struct {
     
     const Self = @This();
     
-    pub fn init(lineup: Lineup, primary_score: f32, tie_breaker: TieBreakerScore) Self {
+    pub fn init(lineup_data: Lineup, primary_score: f32, tie_breaker: TieBreakerScore) Self {
         return Self{
-            .lineup = lineup,
+            .lineup = lineup_data,
             .primary_score = primary_score,
             .tie_breaker = tie_breaker,
         };
@@ -381,7 +381,7 @@ pub const LineupGenerator = struct {
     }
     
     // Score a lineup based on configuration
-    fn scoreLineup(self: Self, lineup_to_score: Lineup) f32 {
+    pub fn scoreLineup(self: Self, lineup_to_score: Lineup) f32 {
         switch (self.config.scoring_strategy) {
             .TOTAL_PROJECTION => return lineup_to_score.total_projection,
             .VALUE_WEIGHTED => return lineup_to_score.getEfficiency(),
@@ -450,8 +450,7 @@ pub const LineupGenerator = struct {
     }
     
     // Calculate team diversity score (higher = more diverse)
-    fn calculateTeamDiversityScore(self: Self, lineup_to_score: Lineup) f32 {
-        _ = self;
+    pub fn calculateTeamDiversityScore(self: Self, lineup_to_score: Lineup) f32 {
         var team_counts = std.HashMap([]const u8, u8, std.hash_map.StringContext, std.hash_map.default_max_load_percentage).init(self.allocator);
         defer team_counts.deinit();
         
@@ -460,7 +459,11 @@ pub const LineupGenerator = struct {
             fn call(player_opt: ?*const Player, counts: *std.HashMap([]const u8, u8, std.hash_map.StringContext, std.hash_map.default_max_load_percentage)) void {
                 if (player_opt) |p| {
                     const current_count = counts.get(p.team) orelse 0;
-                    counts.put(p.team, current_count + 1) catch return;
+                    counts.put(p.team, current_count + 1) catch {
+                        // If allocation fails, team diversity calculation will be less accurate
+                        // but we don't want to crash the entire generation process
+                        return;
+                    };
                 }
             }
         }.call;
@@ -481,8 +484,8 @@ pub const LineupGenerator = struct {
     }
     
     // Calculate ownership diversity score (higher = more diverse ownership)
-    fn calculateOwnershipDiversityScore(self: Self, lineup_to_score: Lineup) f32 {
-        _ = self;
+    pub fn calculateOwnershipDiversityScore(self: Self, lineup_to_score: Lineup) f32 {
+        _ = self; // Not using allocator in this method
         var ownership_values: [9]f32 = undefined;
         var player_count: u8 = 0;
         
@@ -525,8 +528,8 @@ pub const LineupGenerator = struct {
     }
     
     // Calculate position balance score (higher = better balance across skill positions)
-    fn calculatePositionBalanceScore(self: Self, lineup_to_score: Lineup) f32 {
-        _ = self;
+    pub fn calculatePositionBalanceScore(self: Self, lineup_to_score: Lineup) f32 {
+        _ = self; // Not using allocator in this method
         // Simple balance: compare projection distribution across skill positions
         var skill_projections: [8]f32 = undefined; // Exclude DST from balance calculation
         var skill_count: u8 = 0;
@@ -727,24 +730,57 @@ pub const LineupGenerator = struct {
         
         const slot: PositionSlot = @enumFromInt(slot_index);
         
-        // Get candidate players for this slot
+        // Handle FLEX position separately to avoid memory allocation issues
+        if (slot == .FLEX) {
+            // Try RB candidates for FLEX
+            for (players_by_position.rb.items) |candidate| {
+                if (state.current_lineup.containsPlayer(candidate)) continue;
+                
+                const old_lineup = state.current_lineup;
+                if (self.tryAddPlayerToSlot(&state.current_lineup, candidate, slot)) {
+                    try self.generateRecursive(state, players_by_position, generated_lineups, slot_index + 1);
+                    state.current_lineup = old_lineup;
+                }
+                
+                if (state.shouldStop()) return;
+            }
+            
+            // Try WR candidates for FLEX
+            for (players_by_position.wr.items) |candidate| {
+                if (state.current_lineup.containsPlayer(candidate)) continue;
+                
+                const old_lineup = state.current_lineup;
+                if (self.tryAddPlayerToSlot(&state.current_lineup, candidate, slot)) {
+                    try self.generateRecursive(state, players_by_position, generated_lineups, slot_index + 1);
+                    state.current_lineup = old_lineup;
+                }
+                
+                if (state.shouldStop()) return;
+            }
+            
+            // Try TE candidates for FLEX
+            for (players_by_position.te.items) |candidate| {
+                if (state.current_lineup.containsPlayer(candidate)) continue;
+                
+                const old_lineup = state.current_lineup;
+                if (self.tryAddPlayerToSlot(&state.current_lineup, candidate, slot)) {
+                    try self.generateRecursive(state, players_by_position, generated_lineups, slot_index + 1);
+                    state.current_lineup = old_lineup;
+                }
+                
+                if (state.shouldStop()) return;
+            }
+            return;
+        }
+        
+        // Get candidate players for non-FLEX slots
         const candidates = switch (slot) {
             .QB => players_by_position.qb.items,
             .RB1, .RB2 => players_by_position.rb.items,
             .WR1, .WR2, .WR3 => players_by_position.wr.items,
             .TE => players_by_position.te.items,
-            .FLEX => blk: {
-                // FLEX can be RB, WR, or TE - combine all eligible players
-                var flex_candidates = std.ArrayList(*const Player).init(self.allocator);
-                defer flex_candidates.deinit();
-                
-                try flex_candidates.appendSlice(players_by_position.rb.items);
-                try flex_candidates.appendSlice(players_by_position.wr.items);
-                try flex_candidates.appendSlice(players_by_position.te.items);
-                
-                break :blk flex_candidates.items;
-            },
             .DST => players_by_position.dst.items,
+            .FLEX => unreachable, // Handled above
         };
         
         // Try each candidate player for this slot

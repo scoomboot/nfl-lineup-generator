@@ -77,7 +77,7 @@ test "TeamLimitRule validation" {
     const PlayerBuilder = player_mod.PlayerBuilder;
     
     // Create players from different teams
-    var player1_nyg = try PlayerBuilder.init(allocator)
+    var player1_nyg = try PlayerBuilder.init()
         .setName("NYG Player 1")
         .setTeam("NYG")
         .setOpponent("DAL")
@@ -90,7 +90,7 @@ test "TeamLimitRule validation" {
         .build();
     defer player1_nyg.deinit(allocator);
     
-    var player2_nyg = try PlayerBuilder.init(allocator)
+    var player2_nyg = try PlayerBuilder.init()
         .setName("NYG Player 2") 
         .setTeam("NYG")
         .setOpponent("DAL")
@@ -103,7 +103,7 @@ test "TeamLimitRule validation" {
         .build();
     defer player2_nyg.deinit(allocator);
     
-    var player1_dal = try PlayerBuilder.init(allocator)
+    var player1_dal = try PlayerBuilder.init()
         .setName("DAL Player 1")
         .setTeam("DAL")
         .setOpponent("NYG")
@@ -149,7 +149,7 @@ test "TeamLimitRule validation" {
             var name_buf: [32]u8 = undefined;
             const name = try std.fmt.bufPrint(&name_buf, "Player {d}", .{i});
             
-            const temp_player = try PlayerBuilder.init(allocator)
+            const temp_player = try PlayerBuilder.init()
                 .setName(name)
                 .setTeam("NYG")  // All same team
                 .setOpponent("DAL")

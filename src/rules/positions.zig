@@ -135,7 +135,7 @@ test "PositionConstraintRule validation" {
     const PlayerBuilder = player_mod.PlayerBuilder;
     
     // Create sample players for testing
-    var qb_player = try PlayerBuilder.init(allocator)
+    var qb_player = try PlayerBuilder.init()
         .setName("QB1")
         .setTeam("NYG")
         .setOpponent("DAL")
@@ -148,7 +148,7 @@ test "PositionConstraintRule validation" {
         .build();
     defer qb_player.deinit(allocator);
     
-    var rb1_player = try PlayerBuilder.init(allocator)
+    var rb1_player = try PlayerBuilder.init()
         .setName("RB1")
         .setTeam("NYG")  
         .setOpponent("DAL")
@@ -161,7 +161,7 @@ test "PositionConstraintRule validation" {
         .build();
     defer rb1_player.deinit(allocator);
     
-    var rb2_player = try PlayerBuilder.init(allocator)
+    var rb2_player = try PlayerBuilder.init()
         .setName("RB2")
         .setTeam("DAL")
         .setOpponent("NYG")
@@ -220,7 +220,7 @@ test "FlexPositionRule validation" {
     const PlayerBuilder = player_mod.PlayerBuilder;
     
     // Create sample players
-    var rb_player = try PlayerBuilder.init(allocator)
+    var rb_player = try PlayerBuilder.init()
         .setName("Flex RB")
         .setTeam("NYG")
         .setOpponent("DAL")
@@ -233,7 +233,7 @@ test "FlexPositionRule validation" {
         .build();
     defer rb_player.deinit(allocator);
     
-    var qb_player = try PlayerBuilder.init(allocator)
+    var qb_player = try PlayerBuilder.init()
         .setName("QB1")
         .setTeam("NYG")
         .setOpponent("DAL")

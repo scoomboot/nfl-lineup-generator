@@ -67,7 +67,7 @@ test "UniquePlayerRule validation" {
     const PlayerBuilder = player_mod.PlayerBuilder;
     
     // Create sample players
-    var player1 = try PlayerBuilder.init(allocator)
+    var player1 = try PlayerBuilder.init()
         .setName("Player 1")
         .setTeam("NYG")
         .setOpponent("DAL")
@@ -80,7 +80,7 @@ test "UniquePlayerRule validation" {
         .build();
     defer player1.deinit(allocator);
     
-    var player2 = try PlayerBuilder.init(allocator)
+    var player2 = try PlayerBuilder.init()
         .setName("Player 2")
         .setTeam("DAL")
         .setOpponent("NYG")
@@ -93,7 +93,7 @@ test "UniquePlayerRule validation" {
         .build();
     defer player2.deinit(allocator);
     
-    var duplicate_name_player = try PlayerBuilder.init(allocator)
+    var duplicate_name_player = try PlayerBuilder.init()
         .setName("Player 1")  // Same name as player1
         .setTeam("WAS")
         .setOpponent("PHI")

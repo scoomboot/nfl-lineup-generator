@@ -58,7 +58,7 @@ test "PlayerAvailabilityRule validation" {
     const PlayerBuilder = player_mod.PlayerBuilder;
     
     // Create available player
-    var available_player = try PlayerBuilder.init(allocator)
+    var available_player = try PlayerBuilder.init()
         .setName("Available Player")
         .setTeam("NYG")
         .setOpponent("DAL")
@@ -74,7 +74,7 @@ test "PlayerAvailabilityRule validation" {
     defer available_player.deinit(allocator);
     
     // Create injured (OUT) player
-    var out_player = try PlayerBuilder.init(allocator)
+    var out_player = try PlayerBuilder.init()
         .setName("OUT Player")
         .setTeam("DAL")
         .setOpponent("NYG")
@@ -90,7 +90,7 @@ test "PlayerAvailabilityRule validation" {
     defer out_player.deinit(allocator);
     
     // Create bye week player
-    var bye_player = try PlayerBuilder.init(allocator)
+    var bye_player = try PlayerBuilder.init()
         .setName("Bye Player")
         .setTeam("WAS")
         .setOpponent("BYE")
@@ -106,7 +106,7 @@ test "PlayerAvailabilityRule validation" {
     defer bye_player.deinit(allocator);
     
     // Create questionable player (should be allowed)
-    var questionable_player = try PlayerBuilder.init(allocator)
+    var questionable_player = try PlayerBuilder.init()
         .setName("Questionable Player")
         .setTeam("PHI")
         .setOpponent("WAS")
@@ -173,7 +173,7 @@ test "PlayerAvailabilityRule validation" {
     
     // Test case 5: Player with no injury status (null) should pass
     {
-        var no_injury_player = try PlayerBuilder.init(allocator)
+        var no_injury_player = try PlayerBuilder.init()
             .setName("No Injury Status")
             .setTeam("ATL")
             .setOpponent("TB")
