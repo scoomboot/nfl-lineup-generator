@@ -22,6 +22,7 @@ pub const ScoringStrategy = enum {
     TOTAL_PROJECTION,   // Sum of all player projections
     VALUE_WEIGHTED,     // Projection weighted by value (projection/salary)
     OWNERSHIP_ADJUSTED, // Projection adjusted for ownership percentage
+    BALANCED_SCORE,     // Combination of projection, value, and ownership
     CUSTOM,            // User-defined scoring function
 };
 
@@ -83,6 +84,106 @@ pub const GenerationConfig = struct {
         var config = self;
         config.enable_logging = enable_logging;
         return config;
+    }
+};
+
+// Tie-breaking score for lineups with equal primary scores
+pub const TieBreakerScore = struct {
+    salary_efficiency: f32,    // Projection per $1K salary
+    salary_used: u32,         // Total salary used (higher is better for tie-breaking)
+    team_diversity: f32,      // Team distribution diversity (0.0-1.0)
+    ownership_diversity: f32, // Ownership percentage diversity
+    position_balance: f32,    // Balance of projections across positions
+    
+    const Self = @This();
+    
+    // Compare two tie-breaker scores (returns true if self is better than other)
+    pub fn isBetterThan(self: Self, other: Self) bool {
+        // Priority order for tie-breaking:
+        // 1. Salary efficiency (higher is better)
+        // 2. Salary used (higher is better - use more of the cap)
+        // 3. Team diversity (higher is better)
+        // 4. Ownership diversity (higher is better)
+        // 5. Position balance (higher is better)
+        
+        const efficiency_diff = self.salary_efficiency - other.salary_efficiency;
+        if (@abs(efficiency_diff) > 0.01) { // Significant difference in efficiency
+            return efficiency_diff > 0;
+        }
+        
+        const salary_diff = @as(i32, @intCast(self.salary_used)) - @as(i32, @intCast(other.salary_used));
+        if (@abs(salary_diff) > 100) { // Significant difference in salary usage ($100+)
+            return salary_diff > 0;
+        }
+        
+        const team_diversity_diff = self.team_diversity - other.team_diversity;
+        if (@abs(team_diversity_diff) > 0.05) { // 5% difference in team diversity
+            return team_diversity_diff > 0;
+        }
+        
+        const ownership_diversity_diff = self.ownership_diversity - other.ownership_diversity;
+        if (@abs(ownership_diversity_diff) > 0.02) { // 2% difference in ownership diversity
+            return ownership_diversity_diff > 0;
+        }
+        
+        return self.position_balance > other.position_balance;
+    }
+    
+    pub fn format(
+        self: Self,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = fmt;
+        _ = options;
+        
+        try writer.print("TieBreaker(eff:{d:.2}, sal:${d}, team:{d:.2}, own:{d:.2}, bal:{d:.2})", .{
+            self.salary_efficiency, self.salary_used, self.team_diversity, 
+            self.ownership_diversity, self.position_balance
+        });
+    }
+};
+
+// Scored lineup for ranking and comparison
+pub const ScoredLineup = struct {
+    lineup: Lineup,
+    primary_score: f32,
+    tie_breaker: TieBreakerScore,
+    
+    const Self = @This();
+    
+    pub fn init(lineup: Lineup, primary_score: f32, tie_breaker: TieBreakerScore) Self {
+        return Self{
+            .lineup = lineup,
+            .primary_score = primary_score,
+            .tie_breaker = tie_breaker,
+        };
+    }
+    
+    // Compare scored lineups for sorting (returns true if self is better than other)
+    pub fn isBetterThan(self: Self, other: Self) bool {
+        const score_diff = self.primary_score - other.primary_score;
+        if (@abs(score_diff) > 0.01) { // Significant difference in primary score
+            return score_diff > 0;
+        }
+        
+        // Use tie-breaker if primary scores are essentially equal
+        return self.tie_breaker.isBetterThan(other.tie_breaker);
+    }
+    
+    pub fn format(
+        self: Self,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = fmt;
+        _ = options;
+        
+        try writer.print("ScoredLineup(score:{d:.2}, {}):\n{}", .{
+            self.primary_score, self.tie_breaker, self.lineup
+        });
     }
 };
 
@@ -153,6 +254,16 @@ pub const GenerationResult = struct {
         return &self.lineups[0]; // Assuming lineups are sorted by score
     }
     
+    // Get lineups as scored lineups for detailed analysis
+    pub fn getScoredLineups(self: Self, generator: *LineupGenerator) ![]ScoredLineup {
+        return generator.createScoredLineups(self.lineups);
+    }
+    
+    // Find the best lineup using comprehensive scoring
+    pub fn findBestScoredLineup(self: Self, generator: *LineupGenerator) ?ScoredLineup {
+        return generator.findBestLineup(self.lineups);
+    }
+    
     pub fn format(
         self: Self,
         comptime fmt: []const u8,
@@ -166,8 +277,8 @@ pub const GenerationResult = struct {
         try writer.print("  Generated {d} lineup(s)\n", .{self.lineups.len});
         try writer.print("{}\n", .{self.stats});
         
-        if (self.getBestLineup()) |best| {
-            try writer.print("Best Lineup:\n{}\n", .{best.*});
+        if (self.getBestLineup()) |best_lineup| {
+            try writer.print("Best Lineup:\n{}\n", .{best_lineup.*});
         }
     }
 };
@@ -274,12 +385,8 @@ pub const LineupGenerator = struct {
         switch (self.config.scoring_strategy) {
             .TOTAL_PROJECTION => return lineup_to_score.total_projection,
             .VALUE_WEIGHTED => return lineup_to_score.getEfficiency(),
-            .OWNERSHIP_ADJUSTED => {
-                // Simple ownership adjustment - lower ownership = higher score
-                // This is a basic implementation - more sophisticated versions could
-                // use ownership percentages from player data
-                return lineup_to_score.total_projection * 1.1; // Placeholder
-            },
+            .OWNERSHIP_ADJUSTED => return self.calculateOwnershipAdjustedScore(lineup_to_score),
+            .BALANCED_SCORE => return self.calculateBalancedScore(lineup_to_score),
             .CUSTOM => {
                 if (self.config.scoring_function) |func| {
                     return func(lineup_to_score);
@@ -287,6 +394,184 @@ pub const LineupGenerator = struct {
                 return lineup_to_score.total_projection; // Fallback
             },
         }
+    }
+    
+    // Calculate ownership-adjusted score (lower ownership = higher score multiplier)
+    fn calculateOwnershipAdjustedScore(self: Self, lineup_to_score: Lineup) f32 {
+        var total_score: f32 = 0.0;
+        var player_count: u32 = 0;
+        
+        // Helper to add ownership-adjusted score for a player
+        const addPlayerScore = struct {
+            fn call(player_opt: ?*const Player, total: *f32, count: *u32) void {
+                if (player_opt) |p| {
+                    // Lower ownership gets higher multiplier (contrarian strategy)
+                    // ownership range: 0.0-1.0, multiplier range: 1.5-0.5
+                    const ownership_multiplier = 1.5 - p.ownership;
+                    total.* += p.projection * ownership_multiplier;
+                    count.* += 1;
+                }
+            }
+        }.call;
+        
+        addPlayerScore(lineup_to_score.positions.qb, &total_score, &player_count);
+        addPlayerScore(lineup_to_score.positions.rb1, &total_score, &player_count);
+        addPlayerScore(lineup_to_score.positions.rb2, &total_score, &player_count);
+        addPlayerScore(lineup_to_score.positions.wr1, &total_score, &player_count);
+        addPlayerScore(lineup_to_score.positions.wr2, &total_score, &player_count);
+        addPlayerScore(lineup_to_score.positions.wr3, &total_score, &player_count);
+        addPlayerScore(lineup_to_score.positions.te, &total_score, &player_count);
+        addPlayerScore(lineup_to_score.positions.flex, &total_score, &player_count);
+        addPlayerScore(lineup_to_score.positions.dst, &total_score, &player_count);
+        
+        _ = self; // Suppress unused parameter warning
+        return total_score;
+    }
+    
+    // Calculate balanced score combining projection, value, and ownership
+    fn calculateBalancedScore(self: Self, lineup_to_score: Lineup) f32 {
+        const projection_score = lineup_to_score.total_projection;
+        const value_score = lineup_to_score.getEfficiency();
+        const ownership_score = self.calculateOwnershipAdjustedScore(lineup_to_score);
+        
+        // Weighted combination: 50% projection, 30% value, 20% ownership adjustment
+        return (projection_score * 0.5) + (value_score * 0.3) + (ownership_score * 0.2);
+    }
+    
+    // Calculate tie-breaking score for lineups with equal primary scores
+    fn calculateTieBreakerScore(self: Self, lineup_to_score: Lineup) TieBreakerScore {
+        return TieBreakerScore{
+            .salary_efficiency = lineup_to_score.getEfficiency(),
+            .salary_used = lineup_to_score.total_salary,
+            .team_diversity = self.calculateTeamDiversityScore(lineup_to_score),
+            .ownership_diversity = self.calculateOwnershipDiversityScore(lineup_to_score),
+            .position_balance = self.calculatePositionBalanceScore(lineup_to_score),
+        };
+    }
+    
+    // Calculate team diversity score (higher = more diverse)
+    fn calculateTeamDiversityScore(self: Self, lineup_to_score: Lineup) f32 {
+        _ = self;
+        var team_counts = std.HashMap([]const u8, u8, std.hash_map.StringContext, std.hash_map.default_max_load_percentage).init(self.allocator);
+        defer team_counts.deinit();
+        
+        // Count players per team
+        const countPlayerTeam = struct {
+            fn call(player_opt: ?*const Player, counts: *std.HashMap([]const u8, u8, std.hash_map.StringContext, std.hash_map.default_max_load_percentage)) void {
+                if (player_opt) |p| {
+                    const current_count = counts.get(p.team) orelse 0;
+                    counts.put(p.team, current_count + 1) catch return;
+                }
+            }
+        }.call;
+        
+        countPlayerTeam(lineup_to_score.positions.qb, &team_counts);
+        countPlayerTeam(lineup_to_score.positions.rb1, &team_counts);
+        countPlayerTeam(lineup_to_score.positions.rb2, &team_counts);
+        countPlayerTeam(lineup_to_score.positions.wr1, &team_counts);
+        countPlayerTeam(lineup_to_score.positions.wr2, &team_counts);
+        countPlayerTeam(lineup_to_score.positions.wr3, &team_counts);
+        countPlayerTeam(lineup_to_score.positions.te, &team_counts);
+        countPlayerTeam(lineup_to_score.positions.flex, &team_counts);
+        countPlayerTeam(lineup_to_score.positions.dst, &team_counts);
+        
+        // Calculate diversity: more teams = higher diversity
+        const team_count = team_counts.count();
+        return @as(f32, @floatFromInt(team_count)) / 9.0; // Max diversity is 1.0 (9 different teams)
+    }
+    
+    // Calculate ownership diversity score (higher = more diverse ownership)
+    fn calculateOwnershipDiversityScore(self: Self, lineup_to_score: Lineup) f32 {
+        _ = self;
+        var ownership_values: [9]f32 = undefined;
+        var player_count: u8 = 0;
+        
+        const addOwnership = struct {
+            fn call(player_opt: ?*const Player, values: *[9]f32, count: *u8) void {
+                if (player_opt) |p| {
+                    values[count.*] = p.ownership;
+                    count.* += 1;
+                }
+            }
+        }.call;
+        
+        addOwnership(lineup_to_score.positions.qb, &ownership_values, &player_count);
+        addOwnership(lineup_to_score.positions.rb1, &ownership_values, &player_count);
+        addOwnership(lineup_to_score.positions.rb2, &ownership_values, &player_count);
+        addOwnership(lineup_to_score.positions.wr1, &ownership_values, &player_count);
+        addOwnership(lineup_to_score.positions.wr2, &ownership_values, &player_count);
+        addOwnership(lineup_to_score.positions.wr3, &ownership_values, &player_count);
+        addOwnership(lineup_to_score.positions.te, &ownership_values, &player_count);
+        addOwnership(lineup_to_score.positions.flex, &ownership_values, &player_count);
+        addOwnership(lineup_to_score.positions.dst, &ownership_values, &player_count);
+        
+        if (player_count == 0) return 0.0;
+        
+        // Calculate standard deviation of ownership percentages
+        var mean: f32 = 0.0;
+        for (ownership_values[0..player_count]) |value| {
+            mean += value;
+        }
+        mean /= @as(f32, @floatFromInt(player_count));
+        
+        var variance: f32 = 0.0;
+        for (ownership_values[0..player_count]) |value| {
+            const diff = value - mean;
+            variance += diff * diff;
+        }
+        variance /= @as(f32, @floatFromInt(player_count));
+        
+        return @sqrt(variance); // Standard deviation as diversity measure
+    }
+    
+    // Calculate position balance score (higher = better balance across skill positions)
+    fn calculatePositionBalanceScore(self: Self, lineup_to_score: Lineup) f32 {
+        _ = self;
+        // Simple balance: compare projection distribution across skill positions
+        var skill_projections: [8]f32 = undefined; // Exclude DST from balance calculation
+        var skill_count: u8 = 0;
+        
+        const addSkillProjection = struct {
+            fn call(player_opt: ?*const Player, projections: *[8]f32, count: *u8) void {
+                if (player_opt) |p| {
+                    if (p.position != .DST) {
+                        projections[count.*] = p.projection;
+                        count.* += 1;
+                    }
+                }
+            }
+        }.call;
+        
+        addSkillProjection(lineup_to_score.positions.qb, &skill_projections, &skill_count);
+        addSkillProjection(lineup_to_score.positions.rb1, &skill_projections, &skill_count);
+        addSkillProjection(lineup_to_score.positions.rb2, &skill_projections, &skill_count);
+        addSkillProjection(lineup_to_score.positions.wr1, &skill_projections, &skill_count);
+        addSkillProjection(lineup_to_score.positions.wr2, &skill_projections, &skill_count);
+        addSkillProjection(lineup_to_score.positions.wr3, &skill_projections, &skill_count);
+        addSkillProjection(lineup_to_score.positions.te, &skill_projections, &skill_count);
+        addSkillProjection(lineup_to_score.positions.flex, &skill_projections, &skill_count);
+        
+        if (skill_count == 0) return 0.0;
+        
+        // Calculate coefficient of variation (std dev / mean) - lower is more balanced
+        var mean: f32 = 0.0;
+        for (skill_projections[0..skill_count]) |value| {
+            mean += value;
+        }
+        mean /= @as(f32, @floatFromInt(skill_count));
+        
+        var variance: f32 = 0.0;
+        for (skill_projections[0..skill_count]) |value| {
+            const diff = value - mean;
+            variance += diff * diff;
+        }
+        variance /= @as(f32, @floatFromInt(skill_count));
+        
+        const std_dev = @sqrt(variance);
+        const coefficient_of_variation = if (mean > 0.0) std_dev / mean else 0.0;
+        
+        // Return inverse (1 - CV) so higher score = more balanced
+        return 1.0 - @min(coefficient_of_variation, 1.0);
     }
     
     // Brute force generation using recursive backtracking
@@ -594,11 +879,75 @@ pub const LineupGenerator = struct {
                lineup1.positions.dst == lineup2.positions.dst;
     }
     
-    // Compare lineups for sorting (higher score first)
+    // Compare lineups for sorting with tie-breaking (higher score first)
     fn compareLineups(self: *Self, a: Lineup, b: Lineup) bool {
         const score_a = self.scoreLineup(a);
         const score_b = self.scoreLineup(b);
-        return score_a > score_b; // Higher scores first
+        
+        const score_diff = score_a - score_b;
+        if (@abs(score_diff) > 0.01) { // Significant difference in primary score
+            return score_a > score_b;
+        }
+        
+        // Use tie-breaking for very close scores
+        const tie_a = self.calculateTieBreakerScore(a);
+        const tie_b = self.calculateTieBreakerScore(b);
+        return tie_a.isBetterThan(tie_b);
+    }
+    
+    // Create scored lineups from regular lineups for advanced ranking
+    pub fn createScoredLineups(self: *Self, lineups: []const Lineup) ![]ScoredLineup {
+        var scored_lineups = try self.allocator.alloc(ScoredLineup, lineups.len);
+        
+        for (lineups, 0..) |lineup_item, i| {
+            const primary_score = self.scoreLineup(lineup_item);
+            const tie_breaker = self.calculateTieBreakerScore(lineup_item);
+            scored_lineups[i] = ScoredLineup.init(lineup_item, primary_score, tie_breaker);
+        }
+        
+        return scored_lineups;
+    }
+    
+    // Find the best lineup from a set using comprehensive scoring
+    pub fn findBestLineup(self: *Self, lineups: []const Lineup) ?ScoredLineup {
+        if (lineups.len == 0) return null;
+        
+        var best_lineup = ScoredLineup.init(
+            lineups[0], 
+            self.scoreLineup(lineups[0]), 
+            self.calculateTieBreakerScore(lineups[0])
+        );
+        
+        for (lineups[1..]) |lineup_item| {
+            const scored = ScoredLineup.init(
+                lineup_item,
+                self.scoreLineup(lineup_item),
+                self.calculateTieBreakerScore(lineup_item)
+            );
+            
+            if (scored.isBetterThan(best_lineup)) {
+                best_lineup = scored;
+            }
+        }
+        
+        return best_lineup;
+    }
+    
+    // Rank lineups using comprehensive scoring (returns owned slice)
+    pub fn rankLineups(self: *Self, lineups: []const Lineup) ![]ScoredLineup {
+        const scored_lineups = try self.createScoredLineups(lineups);
+        
+        // Sort using comparison function
+        const SortContext = struct {
+            fn lessThan(context: void, a: ScoredLineup, b: ScoredLineup) bool {
+                _ = context;
+                return b.isBetterThan(a); // Reverse order for descending sort
+            }
+        };
+        
+        std.sort.heap(ScoredLineup, scored_lineups, {}, SortContext.lessThan);
+        
+        return scored_lineups;
     }
 };
 
@@ -887,4 +1236,191 @@ test "LineupGenerator duplicate detection" {
     // Test duplicate detection
     try testing.expect(generator.lineupsEqual(&lineup1, &lineup2)); // Should be equal
     try testing.expect(!generator.lineupsEqual(&lineup1, &lineup3)); // Should be different
+}
+
+test "LineupGenerator scoring strategies" {
+    const testing = std.testing;
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    
+    // Create test players with different characteristics
+    var high_proj_qb = Player.init("High Proj QB", "NYG", "DAL", .QB, 8000, 30.0, 3.75, 0.8, "1"); // High ownership
+    var value_qb = Player.init("Value QB", "NYG", "DAL", .QB, 6000, 25.0, 4.17, 0.2, "2"); // Low ownership, high value
+    
+    var lineup1 = Lineup.init();
+    lineup1.positions.qb = &high_proj_qb;
+    lineup1.total_salary = 8000;
+    lineup1.total_projection = 30.0;
+    
+    var lineup2 = Lineup.init();
+    lineup2.positions.qb = &value_qb;
+    lineup2.total_salary = 6000;
+    lineup2.total_projection = 25.0;
+    
+    const players = [_]*const Player{ &high_proj_qb, &value_qb };
+    
+    var engine = LineupRuleEngine.init(allocator);
+    defer engine.deinit();
+    
+    const config = GenerationConfig.init();
+    var generator = LineupGenerator.init(allocator, &players, &engine, config);
+    defer generator.deinit();
+    
+    // Test TOTAL_PROJECTION strategy
+    generator.config.scoring_strategy = .TOTAL_PROJECTION;
+    const proj_score1 = generator.scoreLineup(lineup1);
+    const proj_score2 = generator.scoreLineup(lineup2);
+    try testing.expect(proj_score1 > proj_score2); // Higher projection wins
+    
+    // Test VALUE_WEIGHTED strategy
+    generator.config.scoring_strategy = .VALUE_WEIGHTED;
+    const value_score1 = generator.scoreLineup(lineup1);
+    const value_score2 = generator.scoreLineup(lineup2);
+    try testing.expect(value_score2 > value_score1); // Better value wins
+    
+    // Test OWNERSHIP_ADJUSTED strategy
+    generator.config.scoring_strategy = .OWNERSHIP_ADJUSTED;
+    const own_score1 = generator.scoreLineup(lineup1);
+    const own_score2 = generator.scoreLineup(lineup2);
+    try testing.expect(own_score2 > own_score1); // Lower ownership gets bonus
+}
+
+test "LineupGenerator tie-breaking and ranking" {
+    const testing = std.testing;
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    
+    // Create players for test lineups
+    var qb1 = Player.init("QB1", "NYG", "DAL", .QB, 7000, 25.0, 3.57, 0.15, "1");
+    var qb2 = Player.init("QB2", "DAL", "NYG", .QB, 7000, 25.0, 3.57, 0.25, "2");
+    var rb1 = Player.init("RB1", "NYG", "DAL", .RB, 6000, 20.0, 3.33, 0.20, "3");
+    var rb2 = Player.init("RB2", "DAL", "NYG", .RB, 6000, 20.0, 3.33, 0.30, "4");
+    
+    // Create two lineups with same total projections but different characteristics
+    var lineup1 = Lineup.init();
+    lineup1.positions.qb = &qb1;
+    lineup1.positions.rb1 = &rb1;
+    lineup1.total_salary = 13000;
+    lineup1.total_projection = 45.0;
+    
+    var lineup2 = Lineup.init();
+    lineup2.positions.qb = &qb2;
+    lineup2.positions.rb1 = &rb2;
+    lineup2.total_salary = 13000;
+    lineup2.total_projection = 45.0;
+    
+    const players = [_]*const Player{ &qb1, &qb2, &rb1, &rb2 };
+    
+    var engine = LineupRuleEngine.init(allocator);
+    defer engine.deinit();
+    
+    const config = GenerationConfig.init();
+    var generator = LineupGenerator.init(allocator, &players, &engine, config);
+    defer generator.deinit();
+    
+    // Test tie-breaking scores
+    const tie1 = generator.calculateTieBreakerScore(lineup1);
+    const tie2 = generator.calculateTieBreakerScore(lineup2);
+    
+    try testing.expect(tie1.salary_efficiency > 0.0);
+    try testing.expect(tie2.salary_efficiency > 0.0);
+    try testing.expect(tie1.team_diversity >= 0.0);
+    try testing.expect(tie2.team_diversity >= 0.0);
+    
+    // Test ScoredLineup creation and comparison
+    const scored1 = ScoredLineup.init(lineup1, 45.0, tie1);
+    const scored2 = ScoredLineup.init(lineup2, 45.0, tie2);
+    
+    // One should be better than the other based on tie-breaking
+    const comparison_result = scored1.isBetterThan(scored2) or scored2.isBetterThan(scored1);
+    try testing.expect(comparison_result);
+}
+
+test "LineupGenerator best lineup selection" {
+    const testing = std.testing;
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    
+    // Create test players
+    var qb1 = Player.init("Best QB", "NYG", "DAL", .QB, 7000, 30.0, 4.29, 0.15, "1");
+    var qb2 = Player.init("Good QB", "NYG", "DAL", .QB, 7000, 25.0, 3.57, 0.25, "2");
+    var qb3 = Player.init("OK QB", "NYG", "DAL", .QB, 7000, 20.0, 2.86, 0.35, "3");
+    
+    // Create test lineups with different scores
+    var lineup1 = Lineup.init();
+    lineup1.positions.qb = &qb1;
+    lineup1.total_salary = 7000;
+    lineup1.total_projection = 30.0;
+    
+    var lineup2 = Lineup.init();
+    lineup2.positions.qb = &qb2;
+    lineup2.total_salary = 7000;
+    lineup2.total_projection = 25.0;
+    
+    var lineup3 = Lineup.init();
+    lineup3.positions.qb = &qb3;
+    lineup3.total_salary = 7000;
+    lineup3.total_projection = 20.0;
+    
+    const lineups = [_]Lineup{ lineup1, lineup2, lineup3 };
+    const players = [_]*const Player{ &qb1, &qb2, &qb3 };
+    
+    var engine = LineupRuleEngine.init(allocator);
+    defer engine.deinit();
+    
+    const config = GenerationConfig.init();
+    var generator = LineupGenerator.init(allocator, &players, &engine, config);
+    defer generator.deinit();
+    
+    // Test finding best lineup
+    const best = generator.findBestLineup(&lineups);
+    try testing.expect(best != null);
+    try testing.expect(best.?.lineup.positions.qb == &qb1); // Should be the highest scoring
+    
+    // Test ranking lineups
+    const ranked = try generator.rankLineups(&lineups);
+    defer allocator.free(ranked);
+    
+    try testing.expect(ranked.len == 3);
+    try testing.expect(ranked[0].lineup.positions.qb == &qb1); // Best first
+    try testing.expect(ranked[1].lineup.positions.qb == &qb2); // Second best
+    try testing.expect(ranked[2].lineup.positions.qb == &qb3); // Worst last
+}
+
+test "TieBreakerScore comparison logic" {
+    const testing = std.testing;
+    
+    const tie1 = TieBreakerScore{
+        .salary_efficiency = 3.5,
+        .salary_used = 50000,
+        .team_diversity = 0.8,
+        .ownership_diversity = 0.15,
+        .position_balance = 0.9,
+    };
+    
+    const tie2 = TieBreakerScore{
+        .salary_efficiency = 3.4, // Slightly lower efficiency
+        .salary_used = 49900,
+        .team_diversity = 0.9,
+        .ownership_diversity = 0.20,
+        .position_balance = 0.95,
+    };
+    
+    // tie1 should be better due to higher efficiency
+    try testing.expect(tie1.isBetterThan(tie2));
+    try testing.expect(!tie2.isBetterThan(tie1));
+    
+    // Test with very close efficiency (should use salary as tie-breaker)
+    const tie3 = TieBreakerScore{
+        .salary_efficiency = 3.50, // Same efficiency
+        .salary_used = 49800, // Lower salary usage
+        .team_diversity = 0.95,
+        .ownership_diversity = 0.25,
+        .position_balance = 0.98,
+    };
+    
+    try testing.expect(tie1.isBetterThan(tie3)); // Higher salary usage wins
 }
